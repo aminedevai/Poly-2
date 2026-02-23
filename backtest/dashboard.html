@@ -479,10 +479,12 @@
       <div class="field">
         <label>Select strategy</label>
         <select id="strategy">
-          <option value="mean_reversion">Mean Reversion</option>
-          <option value="sniper">Volume Spike Sniper</option>
-          <option value="control_down">Control: Always Bet DOWN</option>
-          <option value="all">Run All & Compare</option>
+          <option value="control_down">Always Bet DOWN (baseline ~50%)</option>
+          <option value="volume_contrarian">Volume Contrarian (UP on high-vol)</option>
+          <option value="high_vol_momentum">High Vol Momentum (DOWN on high-vol)</option>
+          <option value="mean_reversion">Mean Reversion (needs real p30)</option>
+          <option value="sniper">Volume Spike Sniper (needs real p30)</option>
+          <option value="all">Run All &amp; Compare</option>
         </select>
       </div>
     </div>
@@ -552,6 +554,12 @@
         <div class="file-list" id="dataset-list">
           <div style="font-size:11px;color:var(--dim);padding:4px 8px">No datasets yet</div>
         </div>
+        <div id="clob-warning" style="display:none;margin-top:8px;padding:7px 10px;
+             background:#1a1000;border:1px solid var(--orange);border-radius:2px;
+             font-size:10px;color:var(--orange);line-height:1.5"></div>
+        <div id="clob-ok" style="display:none;margin-top:8px;padding:7px 10px;
+             background:#0a1a10;border:1px solid var(--green);border-radius:2px;
+             font-size:10px;color:var(--green);line-height:1.5"></div>
       </div>
     </div>
 
@@ -725,13 +733,32 @@ async function loadDatasets() {
   }
 }
 
-function selectFile(fname) {
+async function selectFile(fname) {
   selectedFile = fname;
   document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
   const id = 'fi-' + fname.replace(/\./g,'_');
   const el = document.getElementById(id);
   if (el) el.classList.add('selected');
   document.getElementById('fetch-msg').textContent = `Selected: ${fname}`;
+
+  // Inspect dataset for CLOB data
+  try {
+    const r   = await fetch(`${API}/inspect/${fname}`);
+    const dat = await r.json();
+    const warnEl = document.getElementById('clob-warning');
+    const okEl   = document.getElementById('clob-ok');
+    if (dat.warning && !dat.n_real) {
+      warnEl.textContent = dat.warning;
+      warnEl.style.display = 'block';
+      okEl.style.display   = 'none';
+    } else {
+      warnEl.style.display = 'none';
+      okEl.innerHTML = (dat.n_real > 0)
+            ? `${dat.n_real} real CLOB p30 + ${dat.n_synthetic || 0} synthetic / ${dat.n_total} markets`
+            : `${dat.n_total} markets with synthetic p30 (re-fetch after 48h for real CLOB prices)`;
+      okEl.style.display = 'block';
+    }
+  } catch(e) {}
 }
 
 // ── Fetch data ─────────────────────────────────────────────────────────────
