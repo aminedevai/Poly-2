@@ -3,24 +3,26 @@ from datetime import datetime
 
 
 def github_push():
-    # Get current time for the commit message
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    commit_message = f"Auto-update: {timestamp}"
+    # Uses current date/time for the commit message
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    commit_msg = f"Update backtest results: {timestamp}"
 
     try:
-        print("--- Starting Git Push ---")
-        # 1. Add all changes
+        print("--- Syncing with GitHub ---")
+        # 1. Stage changes
         subprocess.run(["git", "add", "."], check=True)
 
-        # 2. Commit changes
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        # 2. Commit
+        subprocess.run(["git", "commit", "-m", commit_msg], check=True)
 
-        # 3. Push to origin main
+        # 3. Push
+        # Note: Using 'origin main' as established earlier
         subprocess.run(["git", "push", "origin", "main"], check=True)
 
-        print(f"--- Successfully pushed to GitHub at {timestamp} ---")
+        print(f"✅ Successfully pushed to https://github.com/aminedevai/Poly-2")
+
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred during git operations: {e}")
+        print(f"❌ Git Push Failed. Make sure you have no conflicts. Error: {e}")
 
 
 if __name__ == "__main__":

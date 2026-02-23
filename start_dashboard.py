@@ -1,36 +1,59 @@
-import http.server
-import socketserver
+import subprocess
 import webbrowser
-import os
-import threading
 import time
+import sys
+import socket
 
-PORT = 8000
-# Update this if your dashboard is in a subfolder, e.g., "backtest/dashboard.html"
-FILE_PATH = "backtest/dashboard.html"
+# Configured based on your specific CLI settings
+PORT = 8081
+HOST = "127.0.0.1"
+URL = f"http://{HOST}:{PORT}"
 
-def start_server():
-    handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", PORT), handler) as httpd:
-        print(f"Serving locally at http://localhost:{PORT}")
-        httpd.serve_forever()
+
+def is_port_open(host, port):
+    """Check if the server is actually ready to receive traffic."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex((host, port)) == 0
+
+
+def launch_dashboard():
+    print(f"--- Launching Poly 2 Dashboard ---")
+
+    try:
+        # Start the server: python -m backtest.server
+        process = subprocess.Popen(
+            [sys.executable, "-m", "backtest.server"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        print(f"Waiting for server to wake up on port {PORT}...")
+
+        # Poll the port for up to 15 seconds
+        for _ in range(15):
+            if is_port_open(HOST, PORT):
+                print("✅ Server is LIVE!")
+                break
+            time.sleep(1)
+        else:
+            print(f"❌ Timeout: Server didn't start on {PORT}. Check for errors above.")
+            return
+
+        # Open the browser to the working dashboard
+        webbrowser.open(URL)
+
+        print("\n--- Server Logs (Press Ctrl+C to stop) ---")
+        for line in process.stdout:
+            print(line, end="")
+
+    except KeyboardInterrupt:
+        print("\nStopping server...")
+        process.terminate()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
 
 if __name__ == "__main__":
-    # 1. Start the server in a separate thread so it doesn't block the script
-    server_thread = threading.Thread(target=start_server, daemon=True)
-    server_thread.start()
-
-    # 2. Give the server a second to wake up
-    time.sleep(1)
-
-    # 3. Open the specific dashboard file in your default browser
-    url = f"http://localhost:{PORT}/{FILE_PATH}"
-    print(f"Opening dashboard: {url}")
-    webbrowser.open(url)
-
-    # 4. Keep the main script alive so the server stays up
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nShutting down server...")
+    launch_dashboard()
