@@ -170,12 +170,12 @@ body {
 }
 .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
 
-/* ── THREE-COLUMN STRATEGY ROW ──────────────────────────────────────────── */
+/* ── STRATEGY GRID ───────────────────────────────────────────────────────── */
 .strat-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .strat-card {
@@ -210,6 +210,48 @@ body {
 .mini-stat { }
 .mini-label { font-size: 9px; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
 .mini-value { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── STRATEGY TRADE HISTORY ─────────────────────────────────────────────── */
+.strat-history {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.strat-history-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.strat-history-header .hist-title {
+  font-weight: 600;
+  font-size: 10px;
+}
+
+.hist-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.trade-row-win  td { border-left: 2px solid var(--green); }
+.trade-row-lose td { border-left: 2px solid var(--red); }
+.trade-row-open td { border-left: 2px solid var(--yellow); }
 
 /* ── TABLE ──────────────────────────────────────────────────────────────── */
 .table-card {
@@ -507,11 +549,11 @@ td a:hover { text-decoration: underline; }
   <!-- ── STRATEGY SUMMARY ROW ──────────────────────────────────────────────── -->
   <div class="sec">
     <span class="sec-accent">STRATEGIES</span>
-    <span>Paper trading performance</span>
+    <span>Paper trading performance — all 5 live strategies</span>
   </div>
 
-  <div class="strat-row" style="margin-bottom:20px">
-
+  <!-- Row 1: Copy Trader + MR + Sniper -->
+  <div class="strat-row">
     <!-- Copy Trader -->
     <div class="strat-card">
       <div class="strat-header">
@@ -519,80 +561,178 @@ td a:hover { text-decoration: underline; }
         <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">mirrors target</div>
       </div>
       <div class="strat-stats">
-        <div class="mini-stat">
-          <div class="mini-label">Capital</div>
-          <div class="mini-value c-cyan" id="ct-capital">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Realized</div>
-          <div class="mini-value" id="ct-realized">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Open</div>
-          <div class="mini-value c-yellow" id="ct-open">--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Closed</div>
-          <div class="mini-value c-dim" id="ct-closed">--</div>
-        </div>
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="ct-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Realized</div><div class="mini-value" id="ct-realized">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Open</div><div class="mini-value c-yellow" id="ct-open">--</div></div>
+        <div class="mini-stat"><div class="mini-label">Closed</div><div class="mini-value c-dim" id="ct-closed">--</div></div>
       </div>
     </div>
-
     <!-- Mean Reversion -->
     <div class="strat-card">
       <div class="strat-header">
         <div class="strat-name c-mg">Mean Reversion</div>
-        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">fade + hold</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">fade extremes · hold</div>
       </div>
       <div class="strat-stats">
-        <div class="mini-stat">
-          <div class="mini-label">Capital</div>
-          <div class="mini-value c-cyan" id="mr-capital">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">P&L</div>
-          <div class="mini-value" id="mr-pnl">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Win Rate</div>
-          <div class="mini-value" id="mr-wr">N/A</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Trades</div>
-          <div class="mini-value c-dim" id="mr-trades">0</div>
-        </div>
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="mr-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">P&L</div><div class="mini-value" id="mr-pnl">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Win Rate</div><div class="mini-value" id="mr-wr">N/A</div></div>
+        <div class="mini-stat"><div class="mini-label">Trades</div><div class="mini-value c-dim" id="mr-trades">0</div></div>
       </div>
-      <!-- MR open trades mini list -->
       <div id="mr-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
     </div>
-
     <!-- Sniper -->
     <div class="strat-card">
       <div class="strat-header">
-        <div class="strat-name c-orange">Sniper</div>
-        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">vol spike</div>
+        <div class="strat-name c-orange">Vol Spike Sniper</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">follow volume</div>
       </div>
       <div class="strat-stats">
-        <div class="mini-stat">
-          <div class="mini-label">Capital</div>
-          <div class="mini-value c-cyan" id="sp-capital">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">P&L</div>
-          <div class="mini-value" id="sp-pnl">$--</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Win Rate</div>
-          <div class="mini-value" id="sp-wr">N/A</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-label">Trades</div>
-          <div class="mini-value c-dim" id="sp-trades">0</div>
-        </div>
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="sp-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">P&L</div><div class="mini-value" id="sp-pnl">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Win Rate</div><div class="mini-value" id="sp-wr">N/A</div></div>
+        <div class="mini-stat"><div class="mini-label">Trades</div><div class="mini-value c-dim" id="sp-trades">0</div></div>
       </div>
       <div id="sp-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
     </div>
+  </div>
 
+  <!-- Row 2: Contrarian + Momentum + Always Down -->
+  <div class="strat-row" style="margin-bottom:20px">
+    <!-- Contrarian -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name c-cyan">Vol Contrarian</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">bet UP · high-vol</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="ct2-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">P&L</div><div class="mini-value" id="ct2-pnl">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Win Rate</div><div class="mini-value" id="ct2-wr">N/A</div></div>
+        <div class="mini-stat"><div class="mini-label">Trades</div><div class="mini-value c-dim" id="ct2-trades">0</div></div>
+      </div>
+      <div id="ct2-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+    </div>
+    <!-- Momentum -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name" style="color:#6090f0">HV Momentum</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">bet DOWN · high-vol</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="mo-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">P&L</div><div class="mini-value" id="mo-pnl">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Win Rate</div><div class="mini-value" id="mo-wr">N/A</div></div>
+        <div class="mini-stat"><div class="mini-label">Trades</div><div class="mini-value c-dim" id="mo-trades">0</div></div>
+      </div>
+      <div id="mo-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+    </div>
+    <!-- Always Down -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name c-dim">Always Bet DOWN</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">baseline control</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat"><div class="mini-label">Capital</div><div class="mini-value c-cyan" id="ad-capital">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">P&L</div><div class="mini-value" id="ad-pnl">$--</div></div>
+        <div class="mini-stat"><div class="mini-label">Win Rate</div><div class="mini-value" id="ad-wr">N/A</div></div>
+        <div class="mini-stat"><div class="mini-label">Trades</div><div class="mini-value c-dim" id="ad-trades">0</div></div>
+      </div>
+      <div id="ad-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ── TRADE HISTORY PER STRATEGY ────────────────────────────────────────── -->
+
+  <!-- Mean Reversion history -->
+  <div class="strat-history">
+    <div class="strat-history-header">
+      <span class="hist-title c-mg">Mean Reversion</span>
+      <span style="color:var(--dim)">— trade history</span>
+      <span class="hist-badge c-mg" id="mr-hist-badge">0 trades</span>
+      <span style="margin-left:auto;color:var(--dim)">fade · hold to settlement</span>
+    </div>
+    <div class="table-scroll" style="max-height:220px">
+      <table><thead><tr>
+        <th>#</th><th>Time</th><th>Slug</th><th>Dir</th><th>p30</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>ROI</th><th>Result</th><th>Link</th>
+      </tr></thead><tbody id="mr-hist-body">
+        <tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- Sniper history -->
+  <div class="strat-history">
+    <div class="strat-history-header">
+      <span class="hist-title c-orange">Vol Spike Sniper</span>
+      <span style="color:var(--dim)">— trade history</span>
+      <span class="hist-badge c-orange" id="sp-hist-badge">0 trades</span>
+      <span style="margin-left:auto;color:var(--dim)">follow vol spikes</span>
+    </div>
+    <div class="table-scroll" style="max-height:220px">
+      <table><thead><tr>
+        <th>#</th><th>Time</th><th>Slug</th><th>Dir</th><th>Vol Ratio</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>ROI</th><th>Result</th><th>Link</th>
+      </tr></thead><tbody id="sp-hist-body">
+        <tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- Contrarian history -->
+  <div class="strat-history">
+    <div class="strat-history-header">
+      <span class="hist-title c-cyan">Vol Contrarian</span>
+      <span style="color:var(--dim)">— trade history</span>
+      <span class="hist-badge c-cyan" id="ct2-hist-badge">0 trades</span>
+      <span style="margin-left:auto;color:var(--dim)">bet UP on high-vol</span>
+    </div>
+    <div class="table-scroll" style="max-height:220px">
+      <table><thead><tr>
+        <th>#</th><th>Time</th><th>Slug</th><th>Dir</th><th>Volume</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>ROI</th><th>Result</th><th>Link</th>
+      </tr></thead><tbody id="ct2-hist-body">
+        <tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- Momentum history -->
+  <div class="strat-history">
+    <div class="strat-history-header">
+      <span class="hist-title" style="color:#6090f0">HV Momentum</span>
+      <span style="color:var(--dim)">— trade history</span>
+      <span class="hist-badge" style="color:#6090f0;border-color:#6090f0" id="mo-hist-badge">0 trades</span>
+      <span style="margin-left:auto;color:var(--dim)">bet DOWN on high-vol</span>
+    </div>
+    <div class="table-scroll" style="max-height:220px">
+      <table><thead><tr>
+        <th>#</th><th>Time</th><th>Slug</th><th>Dir</th><th>Volume</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>ROI</th><th>Result</th><th>Link</th>
+      </tr></thead><tbody id="mo-hist-body">
+        <tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <!-- Always Down history -->
+  <div class="strat-history">
+    <div class="strat-history-header">
+      <span class="hist-title c-dim">Always Bet DOWN</span>
+      <span style="color:var(--dim)">— trade history</span>
+      <span class="hist-badge c-dim" id="ad-hist-badge">0 trades</span>
+      <span style="margin-left:auto;color:var(--dim)">baseline control strategy</span>
+    </div>
+    <div class="table-scroll" style="max-height:220px">
+      <table><thead><tr>
+        <th>#</th><th>Time</th><th>Slug</th><th>Dir</th><th>Volume</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>ROI</th><th>Result</th><th>Link</th>
+      </tr></thead><tbody id="ad-hist-body">
+        <tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>
+      </tbody></table>
+    </div>
   </div>
 
   <!-- ── BTC LIVE TRACKER ───────────────────────────────────────────────────── -->
@@ -807,62 +947,120 @@ function updateStrategies(d) {
   set('ct-open',     String(s.n_open || 0), 'c-yellow');
   set('ct-closed',   String(s.n_closed || 0));
 
-  // Mean Reversion
-  const mr = d.mr || {};
-  set('mr-capital', fmt$(mr.capital));
-  set('mr-pnl',     fmt$(mr.pnl, true), (mr.pnl||0) >= 0 ? 'c-green' : 'c-red');
-  set('mr-trades',  String(mr.n_closed || 0));
-  if (mr.n_closed > 0) {
-    const wr = mr.win_rate * 100;
-    set('mr-wr', `${wr.toFixed(0)}%`, wr >= 70 ? 'c-green' : wr < 50 ? 'c-red' : 'c-orange');
-  } else {
-    set('mr-wr', 'N/A', 'c-dim');
+  // ── Generic helper: update a strategy card + open list + history table ──────
+  function updateStrat(key, prefix, wrThreshold, openExtra, histExtra) {
+    const st = d[key] || {};
+    set(`${prefix}-capital`, fmt$(st.capital));
+    set(`${prefix}-pnl`,     fmt$(st.pnl, true), (st.pnl||0) >= 0 ? 'c-green' : 'c-red');
+    set(`${prefix}-trades`,  String(st.n_closed || 0));
+    if (st.n_closed > 0) {
+      const wr = st.win_rate * 100;
+      set(`${prefix}-wr`, `${wr.toFixed(0)}%`,
+          wr >= wrThreshold ? 'c-green' : wr < 50 ? 'c-red' : 'c-orange');
+    } else {
+      set(`${prefix}-wr`, 'N/A', 'c-dim');
+    }
+
+    // Open trades mini list
+    const openEl = document.getElementById(`${prefix}-open-list`);
+    if (openEl) {
+      const open = st.open_trades || [];
+      if (open.length > 0) {
+        openEl.innerHTML = open.map(t => {
+          const dc = t.direction === 'UP' ? 'c-green' : 'c-red';
+          const tl = timeLeft(t.end_ts);
+          const extra = openExtra(t);
+          return `<div style="font-size:10px;margin-bottom:4px;display:flex;gap:8px;align-items:center">
+            <span class="${dc}" style="font-weight:600">${t.direction}</span>
+            <span class="c-dim">${t.slug.slice(-12)}</span>
+            ${extra}
+            <span style="margin-left:auto" class="${tl.cls}">${tl.str}</span>
+          </div>`;
+        }).join('');
+      } else {
+        openEl.innerHTML = `<div style="font-size:10px;color:var(--dim)">No open trades</div>`;
+      }
+    }
+
+    // History table
+    const histBody  = document.getElementById(`${prefix}-hist-body`);
+    const histBadge = document.getElementById(`${prefix}-hist-badge`);
+    const closed = st.closed_trades || [];
+
+    if (histBadge) {
+      const wins   = closed.filter(t => t.status === 'won').length;
+      const losses = closed.filter(t => t.status !== 'won' && t.status !== 'open').length;
+      histBadge.textContent = `${closed.length} trades · ${wins}W ${losses}L`;
+    }
+
+    if (histBody) {
+      if (!closed.length) {
+        histBody.innerHTML = `<tr><td colspan="11" style="color:var(--dim);text-align:center;padding:16px">No trades yet</td></tr>`;
+        return;
+      }
+      histBody.innerHTML = [...closed].reverse().map((t, i) => {
+        const isOpen = t.status === 'open';
+        const isWin  = t.status === 'won';
+        const rowCls = isOpen ? 'trade-row-open' : isWin ? 'trade-row-win' : 'trade-row-lose';
+        const pnlC   = (t.profit || 0) >= 0 ? 'c-green' : 'c-red';
+        const dirC   = t.direction === 'UP' ? 'c-green' : 'c-red';
+        const time   = t.entered_at
+          ? new Date(t.entered_at * 1000).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'})
+          : '--';
+        const exitStr = isOpen ? '<span class="c-yellow">open</span>'
+          : `$${(t.exit_price||0).toFixed(4)}`;
+        const resultStr = isOpen
+          ? `<span class="badge" style="background:#1a1400;color:var(--yellow)">OPEN</span>`
+          : isWin
+          ? `<span class="badge" style="background:#0a1a10;color:var(--green)">WIN</span>`
+          : `<span class="badge" style="background:#1a0a0a;color:var(--red)">LOSS</span>`;
+        const extra = histExtra(t);
+        return `<tr class="${rowCls}">
+          <td class="c-dim">${i+1}</td>
+          <td class="c-dim">${time}</td>
+          <td class="c-dim" style="font-size:10px">${t.slug ? t.slug.slice(-14) : '--'}</td>
+          <td class="${dirC}" style="font-weight:600">${t.direction}</td>
+          <td class="c-dim">${extra}</td>
+          <td class="c-dim">$${(t.entry_price||0).toFixed(4)}</td>
+          <td class="c-cyan">${exitStr}</td>
+          <td class="${pnlC}">${fmt$(t.profit||0, true)}</td>
+          <td class="${pnlC}">${(t.roi_pct||0) >= 0 ? '+' : ''}${(t.roi_pct||0).toFixed(1)}%</td>
+          <td>${resultStr}</td>
+          <td>${t.url ? `<a href="${t.url}" target="_blank">open</a>` : '--'}</td>
+        </tr>`;
+      }).join('');
+    }
   }
 
-  // MR open trades mini list
-  const mrEl = document.getElementById('mr-open-list');
-  if (mr.open_trades && mr.open_trades.length > 0) {
-    mrEl.innerHTML = mr.open_trades.map(t => {
-      const dc = t.direction === 'UP' ? 'c-green' : 'c-red';
-      const tl = timeLeft(t.end_ts);
-      return `<div style="font-size:10px;margin-bottom:4px;display:flex;gap:8px;align-items:center">
-        <span class="${dc}" style="font-weight:600">${t.direction}</span>
-        <span class="c-dim">${t.slug.slice(-12)}</span>
-        <span class="c-dim">p30=${t.p30.toFixed(3)}</span>
-        <span style="margin-left:auto" class="${tl.cls}">${tl.str}</span>
-      </div>`;
-    }).join('');
-  } else {
-    mrEl.innerHTML = '<div style="font-size:10px;color:var(--dim)">No open MR trades</div>';
-  }
+  // Mean Reversion
+  updateStrat('mr', 'mr', 70,
+    t => `<span class="c-dim">p30=${(t.p30||0).toFixed(3)}</span>`,
+    t => `${(t.p30||0).toFixed(3)}`
+  );
 
   // Sniper
-  const sp = d.sniper || {};
-  set('sp-capital', fmt$(sp.capital));
-  set('sp-pnl',     fmt$(sp.pnl, true), (sp.pnl||0) >= 0 ? 'c-green' : 'c-red');
-  set('sp-trades',  String(sp.n_closed || 0));
-  if (sp.n_closed > 0) {
-    const wr = sp.win_rate * 100;
-    set('sp-wr', `${wr.toFixed(0)}%`, wr >= 60 ? 'c-green' : wr < 50 ? 'c-red' : 'c-orange');
-  } else {
-    set('sp-wr', 'N/A', 'c-dim');
-  }
+  updateStrat('sniper', 'sp', 60,
+    t => `<span class="c-dim">vol=${(t.vol_ratio||0).toFixed(0)}x  mv=${(t.move||0).toFixed(3)}</span>`,
+    t => `${(t.vol_ratio||0).toFixed(0)}x`
+  );
 
-  const spEl = document.getElementById('sp-open-list');
-  if (sp.open_trades && sp.open_trades.length > 0) {
-    spEl.innerHTML = sp.open_trades.map(t => {
-      const dc = t.direction === 'UP' ? 'c-green' : 'c-red';
-      const tl = timeLeft(t.end_ts);
-      return `<div style="font-size:10px;margin-bottom:4px;display:flex;gap:8px;align-items:center">
-        <span class="${dc}" style="font-weight:600">${t.direction}</span>
-        <span class="c-dim">${t.slug.slice(-12)}</span>
-        <span class="c-dim">vol=${t.vol_ratio.toFixed(0)}x</span>
-        <span style="margin-left:auto" class="${tl.cls}">${tl.str}</span>
-      </div>`;
-    }).join('');
-  } else {
-    spEl.innerHTML = '<div style="font-size:10px;color:var(--dim)">No open sniper trades</div>';
-  }
+  // Contrarian
+  updateStrat('contrarian', 'ct2', 52,
+    t => `<span class="c-dim">vol=$${((t.volume||0)/1000).toFixed(1)}k</span>`,
+    t => `$${((t.volume||0)/1000).toFixed(1)}k`
+  );
+
+  // Momentum
+  updateStrat('momentum', 'mo', 50,
+    t => `<span class="c-dim">vol=$${((t.volume||0)/1000).toFixed(1)}k</span>`,
+    t => `$${((t.volume||0)/1000).toFixed(1)}k`
+  );
+
+  // Always Down
+  updateStrat('always_down', 'ad', 49,
+    t => `<span class="c-dim">vol=$${((t.volume||0)/1000).toFixed(1)}k</span>`,
+    t => `$${((t.volume||0)/1000).toFixed(1)}k`
+  );
 }
 
 // ── BTC Live Tracker ──────────────────────────────────────────────────────────

@@ -86,7 +86,7 @@ class MarketTracker:
             'url':        f"https://polymarket.com/event/{self.slug}",
         }
 
-    def tick(self, sniper, mr) -> Optional[str]:
+    def tick(self, sniper, mr, contrarian, momentum, always_down) -> Optional[str]:
         secs  = self.secs_left()
         phase = ('live' if secs > 60 else 'closing' if secs > 0
                  else 'resolving' if not self.outcome else 'done')
@@ -113,12 +113,15 @@ class MarketTracker:
                 self.last_price = up_price
                 self.last_vol   = volume
                 if 10 not in self.recorded:
-                    self._record(10, up_price, volume, outcome, sniper, mr)
+                    self._record(10, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down)
             if outcome:
                 self.outcome = outcome
                 _backfill_outcome(self.slug, outcome)
                 sniper.on_outcome(self.slug, outcome)
                 mr.on_outcome(self.slug, outcome)
+                contrarian.on_outcome(self.slug, outcome)
+                momentum.on_outcome(self.slug, outcome)
+                always_down.on_outcome(self.slug, outcome)
                 self._update_status('done')
                 log.info(f"RESOLVED {self.slug[-10:]} → {outcome}")
                 return f"RESOLVED {self.slug[-10:]} → {outcome}"
@@ -135,20 +138,23 @@ class MarketTracker:
             self.last_price = up_price
             self.last_vol   = volume
         if up_price is not None or outcome is not None:
-            self._record(target, up_price, volume, outcome, sniper, mr)
+            self._record(target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down)
 
         if outcome and not self.outcome:
             self.outcome = outcome
             _backfill_outcome(self.slug, outcome)
             sniper.on_outcome(self.slug, outcome)
             mr.on_outcome(self.slug, outcome)
+            contrarian.on_outcome(self.slug, outcome)
+            momentum.on_outcome(self.slug, outcome)
+            always_down.on_outcome(self.slug, outcome)
             self._update_status('done')
             return f"RESOLVED {self.slug[-10:]} → {outcome}"
 
         self._update_status(phase)
         return None
 
-    def _record(self, target, up_price, volume, outcome, sniper, mr):
+    def _record(self, target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down):
         _append_row({
             'recorded_at':          datetime.now(timezone.utc).isoformat(),
             'slug':                 self.slug,
@@ -163,9 +169,12 @@ class MarketTracker:
         if up_price:
             sniper.on_snapshot(self.slug, up_price, volume, target)
             mr.on_snapshot(self.slug, up_price, volume, target)
+            contrarian.on_snapshot(self.slug, up_price, volume, target)
+            momentum.on_snapshot(self.slug, up_price, volume, target)
+            always_down.on_snapshot(self.slug, up_price, volume, target)
 
 
-async def run(sniper, mr):
+async def run(sniper, mr, contrarian, momentum, always_down):
     _ensure_csv()
     trackers: Dict[str, MarketTracker] = {}
     interval = COLLECT['poll_interval']
@@ -188,7 +197,7 @@ async def run(sniper, mr):
                     )
 
             for slug, tr in list(trackers.items()):
-                tr.tick(sniper, mr)
+                tr.tick(sniper, mr, contrarian, momentum, always_down)
                 if tr.fully_expired():
                     live_status.pop(slug, None)
                     del trackers[slug]
