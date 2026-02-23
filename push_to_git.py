@@ -1,45 +1,52 @@
 import subprocess
 from datetime import datetime
+import os
 
 
 def github_push():
+    # You're already in the right folder, so no need to change directory!
+    print(f"📁 Current folder: {os.getcwd()}")
+
+    # Check if valid git repo
+    if not os.path.exists(".git"):
+        print("❌ ERROR: No .git folder found here!")
+        return
+
+    # Get current branch
+    branch_result = subprocess.run(["git", "branch", "--show-current"],
+                                   capture_output=True, text=True)
+    branch = branch_result.stdout.strip()
+    print(f"🌿 Branch: {branch}")
+
+    # Prepare commit message
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    commit_msg = f"Update backtest results: {timestamp}"
+    commit_msg = f"Update: {timestamp}"
 
     try:
-        print("--- Syncing with GitHub ---")
+        print("\n--- Starting Git Push ---")
 
-        # 1. Check git status first (for debugging)
-        print("\n📋 Current status:")
-        subprocess.run(["git", "status"], check=True)
+        # Step 1: Add ALL files (new, modified, deleted)
+        print("1️⃣ Adding all files...")
+        subprocess.run(["git", "add", "-A"], check=True)
 
-        # 2. Stage ALL changes (including new files, modifications, deletions)
-        print("\n📦 Staging all changes...")
-        result = subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"⚠️ Git add warning: {result.stderr}")
+        # Step 2: Check if there's anything to commit
+        status = subprocess.run(["git", "diff", "--cached", "--quiet"])
+        if status.returncode == 0:
+            print("⚠️ No changes to commit (everything up to date)")
+            return
 
-        # 3. Check what's staged
-        print("\n📋 Staged files:")
-        subprocess.run(["git", "diff", "--cached", "--name-only"], check=True)
-
-        # 4. Commit
-        print(f"\n💾 Committing with message: '{commit_msg}'")
+        # Step 3: Commit
+        print(f"2️⃣ Committing: '{commit_msg}'")
         subprocess.run(["git", "commit", "-m", commit_msg], check=True)
 
-        # 5. Push
-        print("\n🚀 Pushing to GitHub...")
-        subprocess.run(["git", "push", "origin", "main"], check=True)
+        # Step 4: Push
+        print(f"3️⃣ Pushing to origin {branch}...")
+        subprocess.run(["git", "push", "origin", branch], check=True)
 
-        print(f"\n✅ Successfully pushed to https://github.com/aminedevai/Poly-2")
+        print(f"\n✅ SUCCESS! Pushed to GitHub")
 
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Git Push Failed: {e}")
-        print("\n🔧 Troubleshooting tips:")
-        print("   • Run 'git status' manually to see what's wrong")
-        print("   • Check if you're on the correct branch")
-        print("   • Ensure you have internet connection")
-        print("   • Verify your remote URL: git remote -v")
+        print(f"\n❌ FAILED: {e}")
 
 
 if __name__ == "__main__":
