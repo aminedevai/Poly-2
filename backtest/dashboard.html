@@ -479,7 +479,8 @@
       <div class="field">
         <label>Select strategy</label>
         <select id="strategy">
-          <option value="mean_reversion">Mean Reversion</option>
+          <option value="mean_reversion">Mean Reversion (p30)</option>
+          <option value="mean_reversion_p60">Mean Reversion (p60)</option>
           <option value="sniper">Volume Spike Sniper</option>
           <option value="control_down">Control: Always Bet DOWN</option>
           <option value="all">Run All & Compare</option>
@@ -552,6 +553,12 @@
         <div class="file-list" id="dataset-list">
           <div style="font-size:11px;color:var(--dim);padding:4px 8px">No datasets yet</div>
         </div>
+        <div id="clob-warning" style="display:none;margin-top:8px;padding:7px 10px;
+             background:#1a1000;border:1px solid var(--orange);border-radius:2px;
+             font-size:10px;color:var(--orange);line-height:1.5"></div>
+        <div id="clob-ok" style="display:none;margin-top:8px;padding:7px 10px;
+             background:#0a1a10;border:1px solid var(--green);border-radius:2px;
+             font-size:10px;color:var(--green);line-height:1.5"></div>
       </div>
     </div>
 
@@ -681,7 +688,7 @@ window.onload = () => {
   // Hide trigger field for non-MR strategies
   document.getElementById('strategy').addEventListener('change', e => {
     document.getElementById('trigger-field').style.display =
-      e.target.value === 'mean_reversion' ? 'block' : 'none';
+      e.target.value.startsWith('mean_reversion') ? 'block' : 'none';
   });
 };
 
@@ -725,13 +732,30 @@ async function loadDatasets() {
   }
 }
 
-function selectFile(fname) {
+async function selectFile(fname) {
   selectedFile = fname;
   document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
   const id = 'fi-' + fname.replace(/\./g,'_');
   const el = document.getElementById(id);
   if (el) el.classList.add('selected');
   document.getElementById('fetch-msg').textContent = `Selected: ${fname}`;
+
+  // Inspect dataset for CLOB data
+  try {
+    const r   = await fetch(`${API}/inspect/${fname}`);
+    const dat = await r.json();
+    const warnEl = document.getElementById('clob-warning');
+    const okEl   = document.getElementById('clob-ok');
+    if (dat.warning) {
+      warnEl.textContent = dat.warning;
+      warnEl.style.display = 'block';
+      okEl.style.display   = 'none';
+    } else {
+      warnEl.style.display = 'none';
+      okEl.textContent = `Dataset OK: ${dat.n_with_p30} of ${dat.n_total} markets have real p30 prices (${dat.pct_p30}%)`;
+      okEl.style.display = 'block';
+    }
+  } catch(e) {}
 }
 
 // ── Fetch data ─────────────────────────────────────────────────────────────

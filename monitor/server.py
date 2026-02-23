@@ -10,11 +10,7 @@ Run: python -m monitor.server
 """
 import json, os, sys, time
 
-# Force UTF-8 on Windows
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+# UTF-8 handled by PYTHONIOENCODING env var set in launch.py
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse

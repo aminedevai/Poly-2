@@ -1,39 +1,41 @@
 """
 backtest/strategies.py
 ======================
-Backtest-compatible versions of all strategies.
+Backtest strategies using REAL p30 prices from CLOB API.
 
-Each strategy has:
-    name: str
-    on_market(market: dict, capital: float) -> TradeResult | None
+fetch_data.py now stores actual mid-prices at:
+  p30  = UP token price 30s before close  <- MR entry signal
+  p60  = UP token price 60s before close
+  p120 = UP token price 120s before close
+  p240 = UP token price at open (baseline for sniper)
 
-The `market` dict contains the FINAL resolved prices,
-so we simulate what the strategy would see at different points.
+MR logic:
+  - Fire when abs(p30 - 0.50) > trigger_dist
+  - Bet the CHEAP side (fade the extreme)
+  - Hold to settlement
 
-For the live bot, MR fires at p30 (price 30s before close).
-Since historical data only has final prices, we simulate p30
-using a model: final price is our best proxy, but we add the
-key insight — MR only fires when p30 is far from 0.50,
-and we know that happened when the final price was far from 0.50.
+Sniper logic:
+  - Fire when volume spike detected (proxy: high volume + price already moved)
+  - Bet the direction of the move
+  - Hold to settlement
+
+Markets without real p30 data are skipped cleanly.
 """
 from typing import Optional
 from backtest.engine import TradeResult
 
 
-# -- 1. Mean Reversion ---------------------------------------------------------
+# ── 1. Mean Reversion ─────────────────────────────────────────────────────────
 
 class MeanReversionBacktest:
     """
-    Fade extreme prices at 30s before close, hold to settlement.
+    Real MR backtest using actual p30 prices from CLOB history.
 
-    Since we only have final prices in historical data, we use
-    up_price_final as a proxy for p30. When the market was already
-    extreme (resolved at 0.90+), we know it was also extreme at 30s.
+    Entry: price deviates > trigger_dist from 0.50 at 30s before close
+    Direction: fade the extreme (UP high -> bet DOWN, UP low -> bet UP)
+    Exit: hold to settlement (outcome = UP or DOWN at 1.0)
 
-    Parameters:
-        trigger_dist:   minimum deviation from 0.50 to fire
-        bet_size:       fixed bet size per trade
-        min_volume:     skip markets with volume below this (likely inactive)
+    Markets with no p30 data are skipped.
     """
     name = "Mean Reversion"
 
@@ -55,58 +57,63 @@ class MeanReversionBacktest:
         if volume < self.min_volume:
             return None
 
-        # Use final price as proxy for p30 extreme
-        up_final = market.get("up_price_final", 0.5)
+        # Require real p30 price — skip if CLOB data unavailable
+        p30 = market.get("p30")
+        if p30 is None:
+            return None
 
-        # For MR to have fired, price needed to be extreme at 30s
-        # We use final price as signal proxy (conservative — real p30 often more extreme)
-        deviation = abs(up_final - 0.50)
+        # MR trigger: price must be far enough from fair value
+        deviation = abs(p30 - 0.50)
         if deviation < self.trigger_dist:
             return None
 
-        # Fade: if UP was high, we bet DOWN (and vice versa)
-        direction   = "DOWN" if up_final > 0.50 else "UP"
-        entry_price = (1.0 - up_final) if up_final > 0.50 else up_final
+        # Fade: buy the cheap side
+        if p30 > 0.50:
+            direction   = "DOWN"
+            entry_price = 1.0 - p30          # price of DOWN token at p30
+        else:
+            direction   = "UP"
+            entry_price = p30                # price of UP token at p30
 
-        # Settlement: win if our direction = outcome
+        # Safety clamp — should not be needed with real data but just in case
+        entry_price = max(0.01, min(0.99, entry_price))
+
         won    = (direction == outcome)
         shares = self.bet_size / entry_price
         profit = (shares - self.bet_size) if won else -self.bet_size
 
         return TradeResult(
-            slug         = market["slug"],
-            open_dt      = market["open_dt"],
-            direction    = direction,
-            entry_price  = entry_price,
-            outcome      = outcome,
-            won          = won,
-            profit       = profit,
-            bet_size     = self.bet_size,
-            roi_pct      = profit / self.bet_size * 100,
-            volume       = volume,
-            url          = market.get("url", ""),
-            signal_data  = {
-                "up_final":   round(up_final, 4),
+            slug        = market["slug"],
+            open_dt     = market["open_dt"],
+            direction   = direction,
+            entry_price = entry_price,
+            outcome     = outcome,
+            won         = won,
+            profit      = round(profit, 4),
+            bet_size    = self.bet_size,
+            roi_pct     = profit / self.bet_size * 100,
+            volume      = volume,
+            url         = market.get("url", ""),
+            signal_data = {
+                "p30":        round(p30, 4),
                 "deviation":  round(deviation, 4),
                 "trigger":    self.trigger_dist,
+                "p60":        market.get("p60"),
+                "p240":       market.get("p240"),
+                "n_pts":      market.get("n_price_pts", 0),
             },
         )
 
 
-# -- 2. Volume Spike Sniper ----------------------------------------------------
+# ── 2. Volume Spike Sniper ─────────────────────────────────────────────────────
 
 class SniperBacktest:
     """
-    Follow volume spikes — momentum strategy.
+    Momentum strategy using real p30 price + volume.
 
-    In historical data we only have total volume per candle,
-    not intra-candle volume progression. So we simulate the signal
-    using final price as proxy for direction and volume as a filter.
-
-    Parameters:
-        min_volume:       minimum total volume to consider "spike"
-        min_move:         minimum price deviation from 0.50 (proxy for move)
-        bet_size:         fixed bet size per trade
+    Signal: volume > threshold AND price moved > min_move from 0.50 at p30
+    Direction: follow the move (momentum)
+    Exit: hold to settlement
     """
     name = "Volume Spike Sniper"
 
@@ -128,14 +135,18 @@ class SniperBacktest:
         if volume < self.min_volume:
             return None
 
-        up_final = market.get("up_price_final", 0.5)
-        move     = abs(up_final - 0.50)
+        p30 = market.get("p30")
+        if p30 is None:
+            return None
+
+        move = abs(p30 - 0.50)
         if move < self.min_move:
             return None
 
-        # Follow direction of price move (momentum)
-        direction   = "UP" if up_final > 0.50 else "DOWN"
-        entry_price = up_final if direction == "UP" else (1.0 - up_final)
+        # Follow momentum
+        direction   = "UP" if p30 > 0.50 else "DOWN"
+        entry_price = p30 if direction == "UP" else (1.0 - p30)
+        entry_price = max(0.01, min(0.99, entry_price))
 
         won    = (direction == outcome)
         shares = self.bet_size / entry_price
@@ -148,26 +159,26 @@ class SniperBacktest:
             entry_price = entry_price,
             outcome     = outcome,
             won         = won,
-            profit      = profit,
+            profit      = round(profit, 4),
             bet_size    = self.bet_size,
             roi_pct     = profit / self.bet_size * 100,
             volume      = volume,
             url         = market.get("url", ""),
             signal_data = {
-                "up_final":   round(up_final, 4),
+                "p30":        round(p30, 4),
                 "move":       round(move, 4),
                 "min_volume": self.min_volume,
             },
         )
 
 
-# -- 3. Always Bet — baseline control -----------------------------------------
+# ── 3. Control — always bet DOWN ───────────────────────────────────────────────
 
 class AlwaysBetDown:
     """
-    Control strategy: always bet DOWN regardless of price.
-    Useful to compare MR against a random baseline.
-    Expected win rate: ~50%.
+    Baseline: always bet DOWN, regardless of price.
+    Uses real p30 for entry price. Requires p30 data.
+    Expected win rate ~50%. Use to benchmark other strategies against.
     """
     name = "Always Bet DOWN (control)"
 
@@ -178,15 +189,20 @@ class AlwaysBetDown:
     def on_market(self, market: dict, capital: float) -> Optional[TradeResult]:
         if capital < self.bet_size:
             return None
-        if not market.get("outcome"):
+
+        outcome = market.get("outcome")
+        if not outcome:
             return None
+
         if market.get("volume", 0) < self.min_volume:
             return None
 
-        up_final    = market.get("up_price_final", 0.5)
-        entry_price = 1.0 - up_final
+        p30 = market.get("p30")
+        if p30 is None:
+            return None
+
         direction   = "DOWN"
-        outcome     = market["outcome"]
+        entry_price = max(0.01, min(0.99, 1.0 - p30))
         won         = (direction == outcome)
         shares      = self.bet_size / entry_price
         profit      = (shares - self.bet_size) if won else -self.bet_size
@@ -198,7 +214,7 @@ class AlwaysBetDown:
             entry_price = entry_price,
             outcome     = outcome,
             won         = won,
-            profit      = profit,
+            profit      = round(profit, 4),
             bet_size    = self.bet_size,
             roi_pct     = profit / self.bet_size * 100,
             volume      = market.get("volume", 0),
@@ -206,10 +222,71 @@ class AlwaysBetDown:
         )
 
 
-# -- Registry — used by launcher and HTML dashboard ---------------------------
+# ── 4. MR with p60 entry (earlier signal) ─────────────────────────────────────
+
+class MeanReversionP60:
+    """
+    Same as MR but uses p60 (60s before close) as entry signal.
+    Gives slightly worse entry price but earlier signal.
+    Use to compare timing sensitivity.
+    """
+    name = "Mean Reversion (p60)"
+
+    def __init__(self, trigger_dist: float = 0.05, bet_size: float = 10.0,
+                 min_volume: float = 100.0):
+        self.trigger_dist = trigger_dist
+        self.bet_size     = bet_size
+        self.min_volume   = min_volume
+
+    def on_market(self, market: dict, capital: float) -> Optional[TradeResult]:
+        if capital < self.bet_size:
+            return None
+
+        outcome = market.get("outcome")
+        if not outcome:
+            return None
+
+        if market.get("volume", 0) < self.min_volume:
+            return None
+
+        p60 = market.get("p60")
+        if p60 is None:
+            return None
+
+        deviation = abs(p60 - 0.50)
+        if deviation < self.trigger_dist:
+            return None
+
+        direction   = "DOWN" if p60 > 0.50 else "UP"
+        entry_price = max(0.01, min(0.99, (1.0 - p60) if p60 > 0.50 else p60))
+        won         = (direction == outcome)
+        shares      = self.bet_size / entry_price
+        profit      = (shares - self.bet_size) if won else -self.bet_size
+
+        return TradeResult(
+            slug        = market["slug"],
+            open_dt     = market["open_dt"],
+            direction   = direction,
+            entry_price = entry_price,
+            outcome     = outcome,
+            won         = won,
+            profit      = round(profit, 4),
+            bet_size    = self.bet_size,
+            roi_pct     = profit / self.bet_size * 100,
+            volume      = market.get("volume", 0),
+            url         = market.get("url", ""),
+            signal_data = {
+                "p60":       round(p60, 4),
+                "deviation": round(deviation, 4),
+            },
+        )
+
+
+# ── Registry ───────────────────────────────────────────────────────────────────
 
 STRATEGIES = {
-    "mean_reversion": MeanReversionBacktest,
-    "sniper":         SniperBacktest,
-    "control_down":   AlwaysBetDown,
+    "mean_reversion":    MeanReversionBacktest,
+    "mean_reversion_p60": MeanReversionP60,
+    "sniper":            SniperBacktest,
+    "control_down":      AlwaysBetDown,
 }
