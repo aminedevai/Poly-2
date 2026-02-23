@@ -96,7 +96,7 @@ def fetch_range(start_dt: datetime, end_dt: datetime,
     total = len(timestamps)
 
     print(f"\n  Fetching {total} markets "
-          f"({start_dt.strftime('%Y-%m-%d')} → {end_dt.strftime('%Y-%m-%d')})")
+          f"({start_dt.strftime('%Y-%m-%d')} -> {end_dt.strftime('%Y-%m-%d')})")
     print(f"  Estimated time: ~{total * delay / 60:.1f} min at {delay}s/req\n")
 
     for i, ts in enumerate(timestamps):
@@ -126,7 +126,7 @@ def save(markets: list, label: str) -> str:
     path = os.path.join(DATA_DIR, f"markets_{label}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(markets, f, indent=2)
-    print(f"\n  Saved {len(markets)} markets → {path}")
+    print(f"\n  Saved {len(markets)} markets -> {path}")
     return path
 
 
@@ -143,7 +143,7 @@ def list_saved() -> list:
     return sorted(files)
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+# -- CLI -----------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

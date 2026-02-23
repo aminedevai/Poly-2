@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Bot — Live Monitor</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg0:    #080b0d;
+  --bg1:    #0d1115;
+  --bg2:    #121820;
+  --bg3:    #192028;
+  --border: #1e2a35;
+  --text:   #b8c8d8;
+  --dim:    #485a6a;
+  --cyan:   #3aeac0;
+  --green:  #48e080;
+  --red:    #f04848;
+  --orange: #f09820;
+  --yellow: #f0d040;
+  --blue:   #48a0f0;
+  --purple: #9848f0;
+  --mg:     #c060f0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── TOP BAR ────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg1);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--cyan);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topbar-wallet {
+  font-size: 11px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.uptime-badge {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.bot-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.status-dot.live    { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s ease-in-out infinite; }
+.status-dot.stale   { background: var(--orange); }
+.status-dot.offline { background: var(--red); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.refresh-indicator {
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 0.08em;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────────────────────── */
+.page { padding: 16px 20px; max-width: 1600px; margin: 0 auto; }
+
+/* ── SECTION LABEL ─────────────────────────────────────────────────────── */
+.sec {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sec-accent { color: var(--cyan); }
+.sec-count  { margin-left: auto; color: var(--cyan); font-size: 10px; }
+
+/* ── OVERVIEW CARDS ─────────────────────────────────────────────────────── */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 14px 16px;
+}
+
+.card-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.card-value {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.card-sub {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+.bar-wrap {
+  height: 3px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+/* ── THREE-COLUMN STRATEGY ROW ──────────────────────────────────────────── */
+.strat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.strat-card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 14px 16px;
+}
+
+.strat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.strat-name {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.strat-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.mini-stat { }
+.mini-label { font-size: 9px; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
+.mini-value { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── TABLE ──────────────────────────────────────────────────────────────── */
+.table-card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.table-scroll { overflow-x: auto; max-height: 340px; overflow-y: auto; }
+
+table { width: 100%; border-collapse: collapse; }
+
+th {
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--dim);
+  background: var(--bg2);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+td {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+td a { color: var(--blue); text-decoration: none; font-size: 10px; }
+td a:hover { text-decoration: underline; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+/* ── LIVE TRACKER ───────────────────────────────────────────────────────── */
+.tracker-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.tracker-card {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 12px 14px;
+}
+
+.tracker-slug {
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tracker-slug a { color: var(--blue); text-decoration: none; }
+.tracker-slug a:hover { text-decoration: underline; }
+
+.tracker-price {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+}
+
+.tracker-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.snaps-row {
+  display: flex;
+  gap: 4px;
+}
+
+.snap-pill {
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.snap-done { background: #1a3a28; color: var(--green); border: 1px solid #2a5a3a; }
+.snap-todo { background: var(--bg3); color: var(--dim); border: 1px solid var(--border); }
+
+.phase-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── ALERTS ─────────────────────────────────────────────────────────────── */
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-item {
+  padding: 6px 12px;
+  border-radius: 2px;
+  font-size: 11px;
+  border-left: 3px solid transparent;
+}
+
+/* ── COLORS ─────────────────────────────────────────────────────────────── */
+.c-green  { color: var(--green); }
+.c-red    { color: var(--red); }
+.c-cyan   { color: var(--cyan); }
+.c-orange { color: var(--orange); }
+.c-yellow { color: var(--yellow); }
+.c-blue   { color: var(--blue); }
+.c-dim    { color: var(--dim); }
+.c-mg     { color: var(--mg); }
+
+/* ── OFFLINE STATE ──────────────────────────────────────────────────────── */
+.offline-banner {
+  display: none;
+  background: #1a0a0a;
+  border: 1px solid #4a1a1a;
+  border-radius: 3px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: var(--red);
+}
+
+/* ── SCROLLBAR ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg1); }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .overview-grid { grid-template-columns: repeat(2, 1fr); }
+  .strat-row     { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 700px) {
+  .overview-grid { grid-template-columns: 1fr 1fr; }
+  .strat-row     { grid-template-columns: 1fr; }
+  .tracker-grid  { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="topbar-title">Polymarket Bot</div>
+  <div class="topbar-wallet" id="wallet-addr">Loading...</div>
+  <div class="topbar-right">
+    <div class="uptime-badge" id="uptime-display">uptime --:--:--</div>
+    <div class="bot-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">connecting</span>
+    </div>
+    <div class="refresh-indicator" id="refresh-age">--</div>
+    <a href="http://localhost:8081" target="_blank"
+       style="font-size:10px;color:var(--dim);text-decoration:none;
+              border:1px solid var(--border);padding:3px 8px;border-radius:2px;
+              letter-spacing:0.1em;text-transform:uppercase">
+      Backtest
+    </a>
+  </div>
+</div>
+
+<!-- ── PAGE ────────────────────────────────────────────────────────────────── -->
+<div class="page">
+
+  <!-- Offline banner -->
+  <div class="offline-banner" id="offline-banner">
+    main.py is not running or dashboard_data.json not found.
+    Start the bot: <strong>python main.py</strong>
+  </div>
+
+  <!-- ── COPY TRADER OVERVIEW ─────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">COPY TRADER</span>
+    <span>Budget Overview</span>
+    <span class="sec-count" id="open-count">0 open</span>
+  </div>
+
+  <div class="overview-grid">
+    <div class="card">
+      <div class="card-label">Available</div>
+      <div class="card-value c-green" id="ov-available">$--</div>
+      <div class="card-sub" id="ov-budget">of $-- budget</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Invested</div>
+      <div class="card-value c-yellow" id="ov-invested">$--</div>
+      <div class="bar-wrap"><div class="bar-fill" id="invested-bar" style="width:0%;background:var(--yellow)"></div></div>
+      <div class="card-sub" id="ov-invested-pct">0% deployed</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Realized P&L</div>
+      <div class="card-value" id="ov-realized">$--</div>
+      <div class="card-sub" id="ov-trades">0 closed trades</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Unrealized P&L</div>
+      <div class="card-value" id="ov-unrealized">$--</div>
+      <div class="card-sub" id="ov-session">session: $--</div>
+    </div>
+  </div>
+
+  <!-- ── OPEN POSITIONS ────────────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">OPEN POSITIONS</span>
+    <span class="sec-count" id="pos-count">0 positions</span>
+  </div>
+
+  <div class="table-card" style="margin-bottom:20px">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Market</th>
+            <th>Side</th>
+            <th>Entry</th>
+            <th>Now</th>
+            <th>Invested</th>
+            <th>Value</th>
+            <th>P&L</th>
+            <th>ROI</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="positions-body">
+          <tr><td colspan="10" style="color:var(--dim);text-align:center;padding:20px">No open positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── CLOSED TRADES ─────────────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">CLOSED TRADES</span>
+    <span style="color:var(--dim)">(last 20)</span>
+    <span class="sec-count" id="closed-count">0 total</span>
+  </div>
+
+  <div class="table-card" style="margin-bottom:20px">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Market</th>
+            <th>Side</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Invested</th>
+            <th>Returned</th>
+            <th>P&L</th>
+            <th>ROI</th>
+            <th>Reason</th>
+            <th>Closed</th>
+            <th>Link</th>
+          </tr>
+        </thead>
+        <tbody id="closed-body">
+          <tr><td colspan="12" style="color:var(--dim);text-align:center;padding:20px">No closed trades</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── STRATEGY SUMMARY ROW ──────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">STRATEGIES</span>
+    <span>Paper trading performance</span>
+  </div>
+
+  <div class="strat-row" style="margin-bottom:20px">
+
+    <!-- Copy Trader -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name c-green">Copy Trader</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">mirrors target</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat">
+          <div class="mini-label">Capital</div>
+          <div class="mini-value c-cyan" id="ct-capital">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Realized</div>
+          <div class="mini-value" id="ct-realized">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Open</div>
+          <div class="mini-value c-yellow" id="ct-open">--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Closed</div>
+          <div class="mini-value c-dim" id="ct-closed">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mean Reversion -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name c-mg">Mean Reversion</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">fade + hold</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat">
+          <div class="mini-label">Capital</div>
+          <div class="mini-value c-cyan" id="mr-capital">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">P&L</div>
+          <div class="mini-value" id="mr-pnl">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Win Rate</div>
+          <div class="mini-value" id="mr-wr">N/A</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Trades</div>
+          <div class="mini-value c-dim" id="mr-trades">0</div>
+        </div>
+      </div>
+      <!-- MR open trades mini list -->
+      <div id="mr-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+    </div>
+
+    <!-- Sniper -->
+    <div class="strat-card">
+      <div class="strat-header">
+        <div class="strat-name c-orange">Sniper</div>
+        <div style="font-size:9px;color:var(--dim);letter-spacing:0.08em">vol spike</div>
+      </div>
+      <div class="strat-stats">
+        <div class="mini-stat">
+          <div class="mini-label">Capital</div>
+          <div class="mini-value c-cyan" id="sp-capital">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">P&L</div>
+          <div class="mini-value" id="sp-pnl">$--</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Win Rate</div>
+          <div class="mini-value" id="sp-wr">N/A</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">Trades</div>
+          <div class="mini-value c-dim" id="sp-trades">0</div>
+        </div>
+      </div>
+      <div id="sp-open-list" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px"></div>
+    </div>
+
+  </div>
+
+  <!-- ── BTC LIVE TRACKER ───────────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">BTC 5-MIN LIVE</span>
+    <span style="color:var(--dim)">240s=open · 30s=MR signal · 10s=hold check</span>
+    <span class="sec-count" id="tracker-count">0 markets</span>
+  </div>
+
+  <div class="tracker-grid" id="tracker-grid" style="margin-bottom:20px">
+    <div class="tracker-card" style="color:var(--dim);font-size:11px">Waiting for data...</div>
+  </div>
+
+  <!-- ── ALERTS ─────────────────────────────────────────────────────────────── -->
+  <div class="sec">
+    <span class="sec-accent">ALERTS</span>
+    <span class="sec-count" id="alert-count">0</span>
+  </div>
+
+  <div class="alerts-list" id="alerts-list" style="margin-bottom:20px">
+    <div style="font-size:11px;color:var(--dim);padding:8px 0">Monitoring...</div>
+  </div>
+
+  <!-- Footer -->
+  <div style="font-size:10px;color:var(--dim);padding:12px 0 20px;
+              border-top:1px solid var(--border);display:flex;gap:20px;align-items:center">
+    <span id="collector-rows">Collector: 0 snapshots</span>
+    <span id="last-updated">Last update: --</span>
+    <span style="margin-left:auto">Refreshes every 3s</span>
+  </div>
+
+</div>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8082/api';
+let lastUpdateTs  = 0;
+let botStartTime  = 0;
+let refreshTimer  = null;
+
+// ── Start ───────────────────────────────────────────────────────────────────
+window.onload = () => {
+  fetchData();
+  refreshTimer = setInterval(fetchData, 3000);
+};
+
+// ── Fetch ────────────────────────────────────────────────────────────────────
+async function fetchData() {
+  try {
+    const r = await fetch(`${API}/data`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('not found');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    lastUpdateTs = Date.now();
+    update(d);
+    setStatus('live');
+    document.getElementById('offline-banner').style.display = 'none';
+  } catch(e) {
+    setStatus('offline');
+    document.getElementById('offline-banner').style.display = 'block';
+  }
+  // Update age indicator every tick
+  updateAge();
+}
+
+function setStatus(state) {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  dot.className  = `status-dot ${state}`;
+  text.textContent = state === 'live' ? 'live' : state === 'offline' ? 'offline' : 'stale';
+}
+
+function updateAge() {
+  const age = lastUpdateTs ? Math.round((Date.now() - lastUpdateTs) / 1000) : null;
+  const el  = document.getElementById('refresh-age');
+  if (age === null) { el.textContent = '--'; return; }
+  el.textContent = `${age}s ago`;
+  if (age > 15) setStatus('stale');
+}
+
+// ── Main update ──────────────────────────────────────────────────────────────
+function update(d) {
+  if (!d) return;
+
+  // Wallet
+  if (d.wallet) {
+    document.getElementById('wallet-addr').textContent =
+      d.wallet.slice(0, 10) + '...' + d.wallet.slice(-6);
+  }
+
+  // Uptime
+  if (d.start_time) {
+    botStartTime = d.start_time;
+    const up = Math.floor(Date.now()/1000 - d.start_time);
+    const h  = Math.floor(up / 3600);
+    const m  = Math.floor((up % 3600) / 60);
+    const s  = up % 60;
+    document.getElementById('uptime-display').textContent =
+      `uptime ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  // Last updated
+  if (d.updated_at) {
+    document.getElementById('last-updated').textContent =
+      'Last update: ' + new Date(d.updated_at * 1000).toLocaleTimeString();
+  }
+
+  // Collector rows
+  if (d.collector_rows !== undefined) {
+    document.getElementById('collector-rows').textContent =
+      `Collector: ${d.collector_rows.toLocaleString()} snapshots`;
+  }
+
+  updateOverview(d.summary);
+  updatePositions(d.positions || []);
+  updateClosed(d.closed_trades || [], d.summary);
+  updateStrategies(d);
+  updateTracker(d.live_markets || []);
+  updateAlerts(d.alerts || []);
+}
+
+// ── Overview cards ──────────────────────────────────────────────────────────
+function updateOverview(s) {
+  if (!s) return;
+
+  set('ov-available', fmt$(s.available),   s.available >= 0 ? 'c-green' : 'c-red');
+  set('ov-budget',    `of $${s.budget.toFixed(2)} budget`);
+  set('ov-invested',  fmt$(s.invested),     'c-yellow');
+  set('ov-invested-pct', `${s.invested_pct.toFixed(0)}% deployed`);
+  set('ov-realized',  fmt$(s.realized, true), s.realized >= 0 ? 'c-green' : 'c-red');
+  set('ov-trades',    `${s.n_closed} closed trades`);
+  set('ov-unrealized', fmt$(s.unrealized, true), s.unrealized >= 0 ? 'c-green' : 'c-red');
+
+  const sess = s.available - s.session_start;
+  set('ov-session', `session: ${fmt$(sess, true)}`);
+
+  // Invested bar
+  document.getElementById('invested-bar').style.width = `${Math.min(s.invested_pct, 100)}%`;
+
+  document.getElementById('open-count').textContent  = `${s.n_open} open`;
+  document.getElementById('pos-count').textContent   = `${s.n_open} positions`;
+  document.getElementById('closed-count').textContent = `${s.n_closed} total`;
+}
+
+// ── Open positions table ─────────────────────────────────────────────────────
+function updatePositions(positions) {
+  const tbody = document.getElementById('positions-body');
+  if (!positions.length) {
+    tbody.innerHTML = `<tr><td colspan="10" style="color:var(--dim);text-align:center;padding:20px">No open positions</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = positions.map((p, i) => {
+    const pnl     = p.cur_value - p.entry_amount;
+    const roi     = p.entry_price > 0 ? (p.cur_price - p.entry_price) / p.entry_price * 100 : 0;
+    const sideC   = p.outcome.toLowerCase() in {yes:1, up:1} ? 'c-green' : 'c-red';
+    const pnlC    = pnl >= 0 ? 'c-green' : 'c-red';
+    return `
+      <tr>
+        <td class="c-dim">${i + 1}</td>
+        <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis"
+            title="${p.market_title}">${p.market_title}</td>
+        <td><span class="${sideC}" style="font-weight:600">${p.outcome}</span></td>
+        <td class="c-dim">$${p.entry_price.toFixed(4)}</td>
+        <td class="c-cyan">$${p.cur_price.toFixed(4)}</td>
+        <td class="c-yellow">$${p.entry_amount.toFixed(2)}</td>
+        <td>$${(p.cur_value || 0).toFixed(2)}</td>
+        <td class="${pnlC}">${fmt$(pnl, true)}</td>
+        <td class="${pnlC}">${roi >= 0 ? '+' : ''}${roi.toFixed(1)}%</td>
+        <td><a href="${p.url}" target="_blank">open</a></td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Closed trades table ───────────────────────────────────────────────────────
+function updateClosed(trades, summary) {
+  const tbody = document.getElementById('closed-body');
+  if (!trades.length) {
+    tbody.innerHTML = `<tr><td colspan="12" style="color:var(--dim);text-align:center;padding:20px">No closed trades</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = [...trades].reverse().map((t, i) => {
+    const pnlC   = t.realized_pnl >= 0 ? 'c-green' : 'c-red';
+    const sideC  = t.outcome.toLowerCase() in {yes:1, up:1} ? 'c-green' : 'c-red';
+    const rsnC   = t.reason === 'manual' ? 'c-orange' : t.reason === 'expired' ? 'c-red' : 'c-dim';
+    const closed = new Date(t.closed_at * 1000).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    return `
+      <tr>
+        <td class="c-dim">${i + 1}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis"
+            title="${t.market_title}">${t.market_title}</td>
+        <td><span class="${sideC}" style="font-weight:600">${t.outcome}</span></td>
+        <td class="c-dim">$${t.entry_price.toFixed(4)}</td>
+        <td class="c-cyan">$${t.exit_price.toFixed(4)}</td>
+        <td class="c-yellow">$${t.entry_amount.toFixed(2)}</td>
+        <td>$${t.exit_amount.toFixed(2)}</td>
+        <td class="${pnlC}">${fmt$(t.realized_pnl, true)}</td>
+        <td class="${pnlC}">${t.roi_pct >= 0 ? '+' : ''}${t.roi_pct.toFixed(1)}%</td>
+        <td><span class="${rsnC}">${t.reason}</span></td>
+        <td class="c-dim">${closed}</td>
+        <td><a href="${t.url}" target="_blank">open</a></td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Strategy stats ────────────────────────────────────────────────────────────
+function updateStrategies(d) {
+  const s = d.summary || {};
+
+  // Copy Trader
+  set('ct-capital',  fmt$(s.available));
+  set('ct-realized', fmt$(s.realized, true), (s.realized||0) >= 0 ? 'c-green' : 'c-red');
+  set('ct-open',     String(s.n_open || 0), 'c-yellow');
+  set('ct-closed',   String(s.n_closed || 0));
+
+  // Mean Reversion
+  const mr = d.mr || {};
+  set('mr-capital', fmt$(mr.capital));
+  set('mr-pnl',     fmt$(mr.pnl, true), (mr.pnl||0) >= 0 ? 'c-green' : 'c-red');
+  set('mr-trades',  String(mr.n_closed || 0));
+  if (mr.n_closed > 0) {
+    const wr = mr.win_rate * 100;
+    set('mr-wr', `${wr.toFixed(0)}%`, wr >= 70 ? 'c-green' : wr < 50 ? 'c-red' : 'c-orange');
+  } else {
+    set('mr-wr', 'N/A', 'c-dim');
+  }
+
+  // MR open trades mini list
+  const mrEl = document.getElementById('mr-open-list');
+  if (mr.open_trades && mr.open_trades.length > 0) {
+    mrEl.innerHTML = mr.open_trades.map(t => {
+      const dc = t.direction === 'UP' ? 'c-green' : 'c-red';
+      const tl = timeLeft(t.end_ts);
+      return `<div style="font-size:10px;margin-bottom:4px;display:flex;gap:8px;align-items:center">
+        <span class="${dc}" style="font-weight:600">${t.direction}</span>
+        <span class="c-dim">${t.slug.slice(-12)}</span>
+        <span class="c-dim">p30=${t.p30.toFixed(3)}</span>
+        <span style="margin-left:auto" class="${tl.cls}">${tl.str}</span>
+      </div>`;
+    }).join('');
+  } else {
+    mrEl.innerHTML = '<div style="font-size:10px;color:var(--dim)">No open MR trades</div>';
+  }
+
+  // Sniper
+  const sp = d.sniper || {};
+  set('sp-capital', fmt$(sp.capital));
+  set('sp-pnl',     fmt$(sp.pnl, true), (sp.pnl||0) >= 0 ? 'c-green' : 'c-red');
+  set('sp-trades',  String(sp.n_closed || 0));
+  if (sp.n_closed > 0) {
+    const wr = sp.win_rate * 100;
+    set('sp-wr', `${wr.toFixed(0)}%`, wr >= 60 ? 'c-green' : wr < 50 ? 'c-red' : 'c-orange');
+  } else {
+    set('sp-wr', 'N/A', 'c-dim');
+  }
+
+  const spEl = document.getElementById('sp-open-list');
+  if (sp.open_trades && sp.open_trades.length > 0) {
+    spEl.innerHTML = sp.open_trades.map(t => {
+      const dc = t.direction === 'UP' ? 'c-green' : 'c-red';
+      const tl = timeLeft(t.end_ts);
+      return `<div style="font-size:10px;margin-bottom:4px;display:flex;gap:8px;align-items:center">
+        <span class="${dc}" style="font-weight:600">${t.direction}</span>
+        <span class="c-dim">${t.slug.slice(-12)}</span>
+        <span class="c-dim">vol=${t.vol_ratio.toFixed(0)}x</span>
+        <span style="margin-left:auto" class="${tl.cls}">${tl.str}</span>
+      </div>`;
+    }).join('');
+  } else {
+    spEl.innerHTML = '<div style="font-size:10px;color:var(--dim)">No open sniper trades</div>';
+  }
+}
+
+// ── BTC Live Tracker ──────────────────────────────────────────────────────────
+function updateTracker(markets) {
+  const grid = document.getElementById('tracker-grid');
+  document.getElementById('tracker-count').textContent = `${markets.length} markets`;
+
+  if (!markets.length) {
+    grid.innerHTML = `<div class="tracker-card" style="color:var(--dim);font-size:11px">Initializing collector...</div>`;
+    return;
+  }
+
+  grid.innerHTML = markets.map(st => {
+    const price  = st.up_price;
+    const dev    = price ? Math.abs(price - 0.5) * 100 : 0;
+    const tl     = timeLeft(st.end_ts);
+
+    const priceCls = !price ? 'c-dim' : price < 0.45 ? 'c-red' : price > 0.55 ? 'c-green' : 'c-text';
+    const devStr   = dev > 5 ? `<span class="c-orange">${dev.toFixed(1)}% dev</span>` : `<span class="c-dim">${dev.toFixed(1)}% dev</span>`;
+    const volStr   = `$${(st.volume || 0).toLocaleString('en', {maximumFractionDigits:0})}`;
+
+    const phaseCls = st.phase === 'closing' ? 'c-green' : st.phase === 'live' ? 'c-cyan' : 'c-orange';
+    const phaseTag = `<span class="phase-tag ${phaseCls}" style="border:1px solid currentColor">${st.phase}</span>`;
+
+    const outCls = st.outcome === 'UP' ? 'c-green' : st.outcome === 'DOWN' ? 'c-red' : 'c-dim';
+    const outStr = st.outcome || 'pending';
+
+    const snaps = [240, 180, 120, 60, 30, 10];
+    const done  = st.snaps_done || [];
+    const snapsHtml = snaps.map(s =>
+      `<span class="snap-pill ${done.includes(s) ? 'snap-done' : 'snap-todo'}">${s}</span>`
+    ).join('');
+
+    return `
+      <div class="tracker-card">
+        <div class="tracker-slug">
+          <a href="${st.url}" target="_blank">${st.slug.slice(0, 26)}...</a>
+        </div>
+        <div class="tracker-price ${priceCls}">
+          ${price ? price.toFixed(3) : '--'}
+          <span style="font-size:13px;color:var(--dim);font-weight:400"> UP</span>
+        </div>
+        <div class="tracker-meta">
+          <span class="${tl.cls}" style="font-weight:600">${tl.str}</span>
+          ${devStr}
+          <span class="c-dim">${volStr}</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          ${phaseTag}
+          <span class="${outCls}" style="font-size:11px;font-weight:600">${outStr}</span>
+        </div>
+        <div class="snaps-row">${snapsHtml}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+function updateAlerts(alerts) {
+  const el = document.getElementById('alerts-list');
+  document.getElementById('alert-count').textContent = String(alerts.length);
+
+  if (!alerts.length) {
+    el.innerHTML = `<div style="font-size:11px;color:var(--dim);padding:8px 0">Monitoring...</div>`;
+    return;
+  }
+
+  el.innerHTML = [...alerts].reverse().slice(0, 15).map(a => {
+    let bg = 'var(--bg1)';
+    let bc = 'var(--border)';
+    let cl = 'var(--text)';
+    if (a.includes('NEW BET'))     { bg = '#0a1a10'; bc = 'var(--green)';  cl = 'var(--green)'; }
+    else if (a.includes('SNIPER')) { bg = '#1a1000'; bc = 'var(--orange)'; cl = 'var(--orange)'; }
+    else if (a.includes('MR '))    { bg = '#150a20'; bc = 'var(--mg)';     cl = 'var(--mg)'; }
+    else if (a.includes('CLOSED') || a.includes('EXPIRED'))
+                                   { bg = '#1a0a0a'; bc = 'var(--red)';    cl = 'var(--text)'; }
+    return `<div class="alert-item" style="background:${bg};border-left-color:${bc};color:${cl}">${a}</div>`;
+  }).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt$(v, signed = false) {
+  if (v === undefined || v === null) return '$--';
+  const s = signed && v > 0 ? '+' : '';
+  return `${s}$${v.toFixed(2)}`;
+}
+
+function set(id, text, cls = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  if (cls) {
+    el.className = el.className.replace(/c-\w+/g, '') + ' ' + cls;
+  }
+}
+
+function timeLeft(endTs) {
+  const secs = Math.floor(endTs - Date.now() / 1000);
+  if (secs <= 0)  return { str: 'ENDED',        cls: 'c-red' };
+  if (secs < 60)  return { str: `${secs}s!!`,   cls: 'c-red' };
+  if (secs < 3600) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return { str: `${m}m ${String(s).padStart(2,'0')}s`, cls: 'c-orange' };
+  }
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return { str: `${h}h ${String(m).padStart(2,'0')}m`, cls: 'c-yellow' };
+}
+
+// Update age every second without a full re-fetch
+setInterval(updateAge, 1000);
+</script>
+</body>
+</html>

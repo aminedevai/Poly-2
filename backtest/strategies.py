@@ -20,7 +20,7 @@ from typing import Optional
 from backtest.engine import TradeResult
 
 
-# ── 1. Mean Reversion ─────────────────────────────────────────────────────────
+# -- 1. Mean Reversion ---------------------------------------------------------
 
 class MeanReversionBacktest:
     """
@@ -93,7 +93,7 @@ class MeanReversionBacktest:
         )
 
 
-# ── 2. Volume Spike Sniper ────────────────────────────────────────────────────
+# -- 2. Volume Spike Sniper ----------------------------------------------------
 
 class SniperBacktest:
     """
@@ -161,7 +161,7 @@ class SniperBacktest:
         )
 
 
-# ── 3. Always Bet — baseline control ─────────────────────────────────────────
+# -- 3. Always Bet — baseline control -----------------------------------------
 
 class AlwaysBetDown:
     """
@@ -206,7 +206,7 @@ class AlwaysBetDown:
         )
 
 
-# ── Registry — used by launcher and HTML dashboard ───────────────────────────
+# -- Registry — used by launcher and HTML dashboard ---------------------------
 
 STRATEGIES = {
     "mean_reversion": MeanReversionBacktest,

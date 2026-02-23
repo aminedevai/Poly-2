@@ -4,17 +4,23 @@ backtest/server.py
 Tiny HTTP server that serves the backtest dashboard and handles API calls.
 
 Endpoints:
-  GET  /                           → backtest/dashboard.html
-  GET  /api/datasets               → list available data files
-  GET  /api/results                → list saved result files
-  POST /api/fetch   {days, from, to} → fetch historical data
+  GET  /                           - backtest/dashboard.html
+  GET  /api/datasets               - list available data files
+  GET  /api/results                - list saved result files
+  POST /api/fetch   {days, from, to} - fetch historical data
   POST /api/run     {strategy, file, capital, bet, trigger, min_vol}
-                                   → run backtest, return results JSON
-  GET  /api/result/{filename}      → load a saved result JSON
+                                   - run backtest, return results JSON
+  GET  /api/result/{filename}      - load a saved result JSON
 
 Run: python -m backtest.server
 """
 import json, os, sys, threading
+
+# Force UTF-8 output on Windows (fixes charmap codec errors)
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timezone, timedelta
@@ -40,7 +46,7 @@ def _run_job(params: dict):
     try:
         now = datetime.now(timezone.utc)
 
-        # ── Get data ──────────────────────────────────────────────────────────
+        # -- Get data ----------------------------------------------------------
         if params.get("file"):
             _job["progress"] = f"Loading data from {params['file']}..."
             markets = load(params["file"])
@@ -68,7 +74,7 @@ def _run_job(params: dict):
 
         _job["progress"] = f"Running backtest on {len(markets)} markets..."
 
-        # ── Run strategy ──────────────────────────────────────────────────────
+        # -- Run strategy ------------------------------------------------------
         strat_name = params.get("strategy", "mean_reversion")
         capital    = float(params.get("capital", 100.0))
         bet        = float(params.get("bet",     10.0))
@@ -89,7 +95,7 @@ def _run_job(params: dict):
             res = run_engine(markets, strat, starting_capital=capital)
             results.append(res.to_dict())
 
-        # ── Save result ───────────────────────────────────────────────────────
+        # -- Save result -------------------------------------------------------
         os.makedirs(RESULTS_DIR, exist_ok=True)
         ts    = datetime.now().strftime("%Y%m%d_%H%M%S")
         fname = f"result_{strat_name}_{ts}.json"
@@ -217,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                         delay=float(params.get("delay", 0.15)))
                     path_   = save(markets, label)
                     _job["status"]   = "done"
-                    _job["progress"] = f"Fetched {len(markets)} markets → {os.path.basename(path_)}"
+                    _job["progress"] = f"Fetched {len(markets)} markets -> {os.path.basename(path_)}"
                     _job["result"]   = {"n_fetched": len(markets), "file": os.path.basename(path_)}
                 except Exception as e:
                     _job["status"] = "error"

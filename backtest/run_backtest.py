@@ -26,6 +26,12 @@ Usage examples:
 import argparse, json, os, sys, time
 from datetime import datetime, timezone, timedelta
 
+# Force UTF-8 on Windows (fixes charmap codec errors)
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # Allow running from project root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -39,13 +45,13 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 def print_result(res):
     """Print a backtest result in a clean terminal format."""
     W  = 70
-    OK = "\033[92m✓\033[0m"
-    NO = "\033[91m✗\033[0m"
+    OK = "\033[92mOK\033[0m"
+    NO = "\033[91mXX\033[0m"
 
-    print(f"\n{'─'*W}")
+    print(f"\n{'-'*W}")
     print(f"  BACKTEST RESULTS — {res.strategy_name}")
-    print(f"  {res.date_from}  →  {res.date_to}")
-    print(f"{'─'*W}")
+    print(f"  {res.date_from}  ->  {res.date_to}")
+    print(f"{'-'*W}")
     print(f"  Markets in range : {res.n_markets:,}")
     print(f"  Signals fired    : {res.n_signals:,}")
     print(f"  Wins / Losses    : {res.n_wins} / {res.n_losses}")
@@ -62,12 +68,12 @@ def print_result(res):
     print(f"  ROI              : {roi_c}{res.roi_pct:+.1f}%\033[0m")
     print(f"  Avg profit/trade : ${res.avg_profit:+.2f}")
     print(f"  Max drawdown     : {res.max_drawdown:.1f}%")
-    print(f"{'─'*W}")
+    print(f"{'-'*W}")
 
     if res.trades:
         print(f"\n  Last 10 trades:")
         print(f"  {'Date':>12}  {'Dir':>4}  {'Entry':>6}  {'Out':>4}  {'P&L':>8}  URL")
-        print(f"  {'─'*10}  {'─'*4}  {'─'*6}  {'─'*4}  {'─'*8}")
+        print(f"  {'-'*10}  {'-'*4}  {'-'*6}  {'-'*4}  {'-'*8}")
         for t in res.trades[-10:]:
             dt  = t.open_dt[:10]
             dc  = "\033[92m" if t.direction == "UP" else "\033[91m"
@@ -88,7 +94,7 @@ def save_result(res, label: str):
     path  = os.path.join(RESULTS_DIR, fname)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(res.to_dict(), f, indent=2)
-    print(f"  Results saved → {path}")
+    print(f"  Results saved -> {path}")
     return path
 
 
@@ -147,7 +153,7 @@ def main():
     args = parser.parse_args()
 
     print(f"\n  Polymarket Backtest Engine")
-    print(f"  {'─'*40}")
+    print(f"  {'-'*40}")
 
     markets = get_or_fetch_markets(args)
     if not markets:
@@ -186,11 +192,11 @@ def main():
 
     # Comparison summary when running all
     if len(all_results) > 1:
-        print(f"\n  {'─'*70}")
+        print(f"\n  {'-'*70}")
         print(f"  COMPARISON SUMMARY")
-        print(f"  {'─'*70}")
+        print(f"  {'-'*70}")
         print(f"  {'Strategy':<35} {'Signals':>8} {'Win%':>6} {'P&L':>9} {'ROI':>7}")
-        print(f"  {'─'*35} {'─'*8} {'─'*6} {'─'*9} {'─'*7}")
+        print(f"  {'-'*35} {'-'*8} {'-'*6} {'-'*9} {'-'*7}")
         for r in all_results:
             wr_c = "\033[92m" if r.win_rate >= 0.65 else "\033[91m"
             pc   = "\033[92m" if r.total_pnl >= 0 else "\033[91m"
