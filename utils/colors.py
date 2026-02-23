@@ -1,4 +1,4 @@
-"""utils/colors.py — Terminal color helpers."""
+"""utils/colors.py — Terminal colors and string helpers."""
 import re
 
 class C:
@@ -20,15 +20,15 @@ def blue(t):     return _c(t, C.BL)
 def orange(t):   return _c(t, C.OR)
 def mg(t):       return _c(t, C.MG)
 def pnlc(v, t):  return green(t) if v >= 0 else red(t)
-def trunc(t, n): return t[:n - 2] + ".." if len(t) > n else t
+def trunc(t, n): return t[:n-2] + ".." if len(t) > n else t
 
 def strip_ansi(t):
-    return re.sub(r"\033\[[0-9;]*m", "", t)
+    return re.sub(r'\033\[[0-9;]*m', '', t)
 
-def pad(t, n, align="<"):
-    raw   = strip_ansi(t)
+def pad(t, n, align='<'):
+    raw = strip_ansi(t)
     extra = len(t) - len(raw)
-    w     = n + extra
-    if align == ">": return t.rjust(w)
-    if align == "^": return t.center(w)
+    w = n + extra
+    if align == '>': return t.rjust(w)
+    if align == '^': return t.center(w)
     return t.ljust(w)

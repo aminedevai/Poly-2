@@ -1,4 +1,17 @@
-"""core/dashboard.py — Writes dashboard_data.json and renders the terminal UI."""
+"""core/dashboard.py — Writes dashboard_data.json and renders the terminal UI.
+
+Snapshot timing (confirmed):
+  Slug open_ts = market OPEN timestamp
+  Market closes at open_ts + 300 (5 minutes later)
+
+  Snapshots fire AT these seconds-before-close marks:
+    240s = right at market OPEN   (baseline for sniper vol comparison)
+    180s = 1 min in
+    120s = 2 min in
+     60s = 3 min in
+     30s = 4:30 in  ← MR signal fires here
+     10s = 4:50 in  ← MR records unrealised P&L (no exit — hold to settlement)
+"""
 import json, os, sys, time
 from datetime import datetime
 from typing import List
@@ -9,7 +22,7 @@ from utils.colors        import (C, green, red, yel, cyan, gray, bold,
                                  blue, orange, mg, pnlc, trunc, pad)
 from utils.time_helpers  import time_left_from_ts
 
-W = 122
+W = 132   # wider to fit URL column in tracker
 
 
 def _div(n=None):
@@ -73,7 +86,8 @@ def write_json(trader, sniper, mr, start_time: float, alerts: List[str]):
                  "entry_price": round(t.entry_price, 4),
                  "vol_ratio": round(t.vol_ratio, 1),
                  "move": round(t.move, 3),
-                 "end_ts": t.end_ts, "entered_at": t.entered_at}
+                 "end_ts": t.end_ts, "entered_at": t.entered_at,
+                 "url": t.url}
                 for t in sniper.open_trades.values()
             ],
             "closed_trades": [
@@ -82,7 +96,8 @@ def write_json(trader, sniper, mr, start_time: float, alerts: List[str]):
                  "exit_price":  round(t.exit_price,  4),
                  "profit": round(t.profit, 2), "roi_pct": round(t.roi_pct, 1),
                  "vol_ratio": round(t.vol_ratio, 1),
-                 "status": t.status, "entered_at": t.entered_at}
+                 "status": t.status, "entered_at": t.entered_at,
+                 "url": t.url}
                 for t in sniper.closed_trades[-30:]
             ],
         },
@@ -96,7 +111,8 @@ def write_json(trader, sniper, mr, start_time: float, alerts: List[str]):
                 {"slug": t.slug, "direction": t.direction,
                  "p30": round(t.p30, 3),
                  "entry_price": round(t.entry_price, 4),
-                 "end_ts": t.end_ts, "entered_at": t.entered_at}
+                 "end_ts": t.end_ts, "entered_at": t.entered_at,
+                 "url": t.url}
                 for t in mr.open_trades.values()
             ],
             "closed_trades": [
@@ -105,7 +121,8 @@ def write_json(trader, sniper, mr, start_time: float, alerts: List[str]):
                  "entry_price": round(t.entry_price, 4),
                  "exit_price":  round(t.exit_price,  4),
                  "profit": round(t.profit, 2), "roi_pct": round(t.roi_pct, 1),
-                 "status": t.status, "entered_at": t.entered_at}
+                 "status": t.status, "entered_at": t.entered_at,
+                 "url": t.url}
                 for t in mr.closed_trades[-30:]
             ],
         },
@@ -146,7 +163,7 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
     n_rows = row_count()
     L      = []
 
-    # ── Header ────────────────────────────────────────────────────────────
+    # ── Header ────────────────────────────────────────────────────────────────
     L += [
         f"{C.CY}╔{'═' * (W - 2)}╗{C.R}",
         f"{C.CY}║{C.R}  {bold('POLYMARKET BOT  —  PAPER MODE'):<44}"
@@ -157,7 +174,7 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
         "",
     ]
 
-    # ── Budget ────────────────────────────────────────────────────────────
+    # ── Budget ────────────────────────────────────────────────────────────────
     b_bgt = cyan(f"${s['budget']:.2f}")
     b_avl = green(f"${s['available']:.2f}")
     b_inv = yel(f"${s['invested']:.2f}")
@@ -172,7 +189,7 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
         "",
     ]
 
-    # ── Open Positions ────────────────────────────────────────────────────
+    # ── Open Positions ────────────────────────────────────────────────────────
     CM, CS, CE, CN, CI, CP, CR, CT = 30, 6, 8, 8, 9, 10, 7, 10
     L += [
         f"  {C.YL}▼ OPEN POSITIONS  ({s['n_open']}){C.R}",
@@ -201,7 +218,7 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
         L.append(f"  {gray('No open positions.')}")
     L.append("")
 
-    # ── Closed Trades ─────────────────────────────────────────────────────
+    # ── Closed Trades ─────────────────────────────────────────────────────────
     CC = 8
     L += [
         f"  {C.GR}▼ CLOSED TRADES  ({s['n_closed']} total — last 6){C.R}",
@@ -238,22 +255,23 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
         L.append(f"  {gray('No closed trades yet.')}")
     L.append("")
 
-    # ── Live Market Tracker ───────────────────────────────────────────────
+    # ── BTC 5-MIN LIVE TRACKER ────────────────────────────────────────────────
     L += [
-        f"  {C.CY}▼ BTC 5-MIN LIVE TRACKER{C.R}",
-        f"  {_div(110)}",
+        f"  {C.CY}▼ BTC 5-MIN LIVE TRACKER{C.R}"
+        f"  {gray('· 240s=open  · 30s=MR signal  · 10s=hold check')}",
+        f"  {_div(W - 4)}",
         f"  {'Market':<32} {'Closes In':>10}  {'UP':>6}  {'Dev':>5}  "
-        f"{'Vol':>9}  {'Snaps':>22}  {'Phase':>10}  Outcome",
-        f"  {_div(110)}",
+        f"{'Vol':>9}  {'Snaps':>22}  {'Phase':>10}  {'Out':>4}  URL",
+        f"  {_div(W - 4)}",
     ]
     if live_status:
         for st in sorted(live_status.values(), key=lambda x: x["end_ts"]):
             tl, _ = time_left_from_ts(st["end_ts"])
             price = st["up_price"]
             dev   = abs(price - 0.5) if price else 0
-            p_s   = (red if price and price < 0.45
-                     else green if price and price > 0.55
-                     else gray)(f"{price:.3f}" if price else "  --  ")
+            p_s   = (red   if price and price < 0.45 else
+                     green if price and price > 0.55 else gray)(
+                         f"{price:.3f}" if price else "  --  ")
             dev_s = orange(f"{dev * 100:.1f}%") if dev > 0.05 else gray(f"{dev * 100:.1f}%")
             done  = st.get("snaps_done", [])
             snaps_s = " ".join(
@@ -265,18 +283,19 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
                        else orange(st["phase"]))
             oc = (green(st["outcome"])  if st["outcome"] == "UP"
                   else red(st["outcome"]) if st["outcome"] == "DOWN"
-                  else gray("pending"))
+                  else gray("--"))
+            url_s = blue(st.get("url", ""))  # ← URL now shown per row
             L.append(
                 f"  {st['slug']:<32} {pad(tl, 10, '>')}  "
                 f"{pad(p_s, 6, '>')}  {pad(dev_s, 5, '>')}  "
                 f"${st['volume']:>8,.0f}  {snaps_s}  "
-                f"{pad(phase_c, 10, '>')}  {oc}"
+                f"{pad(phase_c, 10, '>')}  {pad(oc, 4, '^')}  {url_s}"
             )
     else:
         L.append(f"  {gray('Initializing collector...')}")
     L.append("")
 
-    # ── Sniper ────────────────────────────────────────────────────────────
+    # ── Sniper ────────────────────────────────────────────────────────────────
     sp_pnl  = ss["pnl"]; sp_cap = ss["capital"]
     sp_sess = sp_cap - ss["session_start"]
     wr_c    = (green(f"{ss['win_rate']:.0%}") if ss["win_rate"] >= 0.6
@@ -294,10 +313,11 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
             tl, _ = time_left_from_ts(t.end_ts)
             dc    = green if t.direction == "UP" else red
             L.append(f"    {slug[-12:]}  {pad(dc(t.direction), 6, '^')}  "
-                     f"entry={t.entry_price:.4f}  vol={t.vol_ratio:.0f}x  {tl}")
+                     f"entry={t.entry_price:.4f}  vol={t.vol_ratio:.0f}x  {tl}  "
+                     f"{blue(t.url)}")
     L.append("")
 
-    # ── Mean Reversion ────────────────────────────────────────────────────
+    # ── Mean Reversion ────────────────────────────────────────────────────────
     mr_pnl  = ms["pnl"]; mr_cap = ms["capital"]
     mr_sess = mr_cap - ms["session_start"]
     mr_wr   = (green(f"{ms['win_rate']:.0%}") if ms["win_rate"] >= 0.7
@@ -316,7 +336,8 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
             tl, _ = time_left_from_ts(t.end_ts)
             dc    = green if t.direction == "UP" else red
             L.append(f"    {slug[-12:]}  {pad(dc(t.direction), 6, '^')}  "
-                     f"p30={t.p30:.3f}  entry={t.entry_price:.4f}  {tl}")
+                     f"p30={t.p30:.3f}  entry={t.entry_price:.4f}  {tl}  "
+                     f"{blue(t.url)}")
     if mr.closed_trades:
         L.append(f"  {gray('Last trades:')}")
         for t in reversed(mr.closed_trades[-4:]):
@@ -326,10 +347,10 @@ def render(trader, sniper, mr, start_time: float, alerts: List[str]):
             pc = pnlc(t.profit, f"${t.profit:+.2f}")
             L.append(f"    {dt}  {t.slug[-12:]}  {pad(dc(t.direction), 6, '^')}  "
                      f"p30={t.p30:.3f}  entry={t.entry_price:.4f}  "
-                     f"{pad(rc, 7, '^')}  {pad(pc, 8, '>')} ")
+                     f"{pad(rc, 7, '^')}  {pad(pc, 8, '>')}  {blue(t.url)}")
     L.append("")
 
-    # ── Alerts ────────────────────────────────────────────────────────────
+    # ── Alerts ────────────────────────────────────────────────────────────────
     L += [f"  {C.MG}▼ ALERTS{C.R}", f"  {_div(80)}"]
     if alerts:
         for a in alerts[-6:]:

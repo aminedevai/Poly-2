@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Backtest Engine</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg0:    #0a0d0f;
+    --bg1:    #0f1317;
+    --bg2:    #151a1f;
+    --bg3:    #1c2229;
+    --border: #242c35;
+    --text:   #c8d4de;
+    --dim:    #5a6a7a;
+    --cyan:   #4af0c4;
+    --green:  #50e890;
+    --red:    #f05050;
+    --orange: #f0a030;
+    --yellow: #f0d050;
+    --blue:   #50a8f0;
+    --purple: #a050f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg0);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: var(--bg1);
+  }
+
+  header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+
+  header .tagline {
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+  }
+
+  .dot { color: var(--cyan); margin: 0 8px; }
+
+  .status-badge {
+    margin-left: auto;
+    padding: 4px 12px;
+    border-radius: 2px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .status-badge.idle    { background: var(--bg3); color: var(--dim); border: 1px solid var(--border); }
+  .status-badge.running { background: #1a2a1a; color: var(--green); border: 1px solid #304030; animation: pulse 1.2s ease-in-out infinite; }
+  .status-badge.done    { background: #1a2a20; color: var(--cyan); border: 1px solid #2a4a38; }
+  .status-badge.error   { background: #2a1a1a; color: var(--red); border: 1px solid #4a2020; }
+
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.5 } }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    background: var(--bg1);
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Main Panel ── */
+  .main {
+    overflow-y: auto;
+    background: var(--bg0);
+  }
+
+  /* ── Section Headers ── */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Form ── */
+  .field { margin-bottom: 14px; }
+
+  label {
+    display: block;
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+
+  select, input {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  select:focus, input:focus {
+    border-color: var(--cyan);
+  }
+
+  select option { background: var(--bg2); }
+
+  /* date range toggle */
+  .range-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .range-toggle button {
+    flex: 1;
+    padding: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s;
+  }
+  .range-toggle button.active {
+    background: var(--bg3);
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    width: 100%;
+    padding: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn-run {
+    background: var(--cyan);
+    color: var(--bg0);
+  }
+  .btn-run:hover { background: #6af8d8; }
+  .btn-run:disabled { background: var(--bg3); color: var(--dim); cursor: not-allowed; }
+
+  .btn-fetch {
+    background: var(--bg2);
+    color: var(--orange);
+    border: 1px solid var(--orange);
+  }
+  .btn-fetch:hover { background: #1a1200; }
+  .btn-fetch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Progress bar ── */
+  .progress-wrap {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 8px 12px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .progress-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    flex-shrink: 0;
+  }
+  .progress-dot.idle   { background: var(--dim); }
+  .progress-dot.error  { background: var(--red); }
+  .progress-dot.running { animation: pulse 0.8s infinite; }
+
+  .progress-text {
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  /* ── Datasets list ── */
+  .file-list {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .file-item {
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--blue);
+    cursor: pointer;
+    border-radius: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.1s;
+  }
+  .file-item:hover { background: var(--bg3); }
+  .file-item.selected { background: var(--bg3); border-left: 2px solid var(--cyan); }
+
+  /* ── Results area ── */
+  .results-area {
+    padding: 24px;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    gap: 12px;
+    color: var(--dim);
+  }
+
+  .empty-icon { font-size: 40px; opacity: 0.3; }
+  .empty-text { font-size: 12px; letter-spacing: 0.1em; }
+
+  /* ── Stats cards ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px 16px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-sub {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 3px;
+  }
+
+  .green  { color: var(--green); }
+  .red    { color: var(--red); }
+  .cyan   { color: var(--cyan); }
+  .orange { color: var(--orange); }
+  .yellow { color: var(--yellow); }
+  .blue   { color: var(--blue); }
+
+  /* ── Equity curve (canvas) ── */
+  .chart-wrap {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+
+  .chart-title {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 12px;
+  }
+
+  canvas { display: block; width: 100%; }
+
+  /* ── Win rate bar ── */
+  .wr-bar-wrap {
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+
+  .wr-bar { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+  /* ── Trade table ── */
+  .table-wrap {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-title {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  .table-count {
+    font-size: 10px;
+    color: var(--cyan);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dim);
+    background: var(--bg2);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 7px 12px;
+    font-size: 11px;
+    border-top: 1px solid var(--border);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  tr:hover td { background: var(--bg2); }
+
+  td a { color: var(--blue); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+
+  .badge-up   { background: #1a3020; color: var(--green); border: 1px solid #2a5035; }
+  .badge-down { background: #301a1a; color: var(--red);   border: 1px solid #502a2a; }
+  .badge-win  { background: #1a3028; color: var(--cyan); }
+  .badge-loss { background: #301a1a; color: var(--red); }
+
+  /* ── Comparison table ── */
+  .compare-table td:first-child { color: var(--text); font-weight: 500; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg1); }
+  ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  .tab {
+    padding: 10px 18px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: var(--dim);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .tab.active {
+    color: var(--cyan);
+    border-bottom-color: var(--cyan);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid">
+
+  <!-- ── HEADER ── -->
+  <header>
+    <div>
+      <h1>▸ Polymarket Backtest</h1>
+      <div class="tagline">BTC 5-min · Historical strategy validation</div>
+    </div>
+    <span class="dot">◆</span>
+    <div id="progress-text" style="font-size:11px;color:var(--dim)">Ready</div>
+    <div id="status-badge" class="status-badge idle">Idle</div>
+  </header>
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+
+    <!-- Strategy -->
+    <div>
+      <div class="section-label">Strategy</div>
+      <div class="field">
+        <label>Select strategy</label>
+        <select id="strategy">
+          <option value="mean_reversion">Mean Reversion</option>
+          <option value="sniper">Volume Spike Sniper</option>
+          <option value="control_down">Control: Always Bet DOWN</option>
+          <option value="all">Run All & Compare</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Date Range -->
+    <div>
+      <div class="section-label">Date Range</div>
+      <div class="range-toggle">
+        <button class="active" onclick="setMode('days')">Last N Days</button>
+        <button onclick="setMode('range')">Custom Range</button>
+      </div>
+
+      <div id="mode-days">
+        <div class="field">
+          <label>Days back</label>
+          <input type="number" id="days" value="7" min="1" max="90">
+        </div>
+      </div>
+
+      <div id="mode-range" style="display:none">
+        <div class="field">
+          <label>From date</label>
+          <input type="date" id="date-from">
+        </div>
+        <div class="field">
+          <label>To date</label>
+          <input type="date" id="date-to">
+        </div>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div>
+      <div class="section-label">Parameters</div>
+      <div class="field">
+        <label>Starting capital ($)</label>
+        <input type="number" id="capital" value="100" min="10">
+      </div>
+      <div class="field">
+        <label>Bet size ($)</label>
+        <input type="number" id="bet" value="10" min="1">
+      </div>
+      <div class="field" id="trigger-field">
+        <label>MR trigger distance</label>
+        <input type="number" id="trigger" value="0.05" min="0.01" max="0.49" step="0.01">
+        <div style="font-size:10px;color:var(--dim);margin-top:4px">price must be >X from $0.50 to fire</div>
+      </div>
+      <div class="field">
+        <label>Min market volume ($)</label>
+        <input type="number" id="min-vol" value="100" min="0">
+      </div>
+    </div>
+
+    <!-- Data Fetch -->
+    <div>
+      <div class="section-label">Data</div>
+      <div class="field">
+        <div class="progress-wrap">
+          <div id="fetch-dot" class="progress-dot idle"></div>
+          <div id="fetch-msg" class="progress-text">No data fetched yet</div>
+        </div>
+      </div>
+      <button class="btn btn-fetch" id="fetch-btn" onclick="fetchData()">
+        ↓ Fetch Historical Data
+      </button>
+      <div style="margin-top:10px">
+        <div class="file-list" id="dataset-list">
+          <div style="font-size:11px;color:var(--dim);padding:4px 8px">No datasets yet</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run -->
+    <div style="margin-top:auto">
+      <button class="btn btn-run" id="run-btn" onclick="runBacktest()">
+        ▶ Run Backtest
+      </button>
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+    <div class="results-area">
+
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">◈</div>
+        <div class="empty-text">Select a strategy and run a backtest</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px">
+          Data is fetched directly from Polymarket API
+        </div>
+      </div>
+
+      <div id="results-content" style="display:none">
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <div class="tab active" onclick="showTab('overview')">Overview</div>
+          <div class="tab" onclick="showTab('trades')">Trade Log</div>
+          <div class="tab" onclick="showTab('equity')">Equity Curve</div>
+        </div>
+
+        <!-- ── Overview Tab ── -->
+        <div id="tab-overview" class="tab-panel active">
+
+          <div class="stats-grid" id="stats-grid">
+            <!-- filled by JS -->
+          </div>
+
+          <!-- Win rate visual -->
+          <div class="chart-wrap" id="wr-section" style="margin-bottom:16px">
+            <div class="chart-title">Win Rate vs Threshold</div>
+            <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
+              <div style="font-size:28px;font-weight:600" id="wr-big">—</div>
+              <div>
+                <div style="font-size:11px;color:var(--dim)" id="wr-sub">—</div>
+                <div class="wr-bar-wrap" style="width:200px">
+                  <div class="wr-bar" id="wr-bar" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary text -->
+          <div id="summary-text" style="background:var(--bg1);border:1px solid var(--border);
+               border-radius:3px;padding:14px 16px;font-size:12px;line-height:2;
+               margin-bottom:16px;color:var(--dim)">
+          </div>
+
+        </div>
+
+        <!-- ── Trades Tab ── -->
+        <div id="tab-trades" class="tab-panel">
+          <div class="table-wrap">
+            <div class="table-header">
+              <span class="table-title">Trade Log</span>
+              <span class="table-count" id="trade-count">0 trades</span>
+            </div>
+            <div style="overflow-x:auto;max-height:600px;overflow-y:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Date</th>
+                    <th>Dir</th>
+                    <th>Entry</th>
+                    <th>Outcome</th>
+                    <th>Result</th>
+                    <th>P&L</th>
+                    <th>ROI%</th>
+                    <th>Volume</th>
+                    <th>Link</th>
+                  </tr>
+                </thead>
+                <tbody id="trades-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Equity Curve Tab ── -->
+        <div id="tab-equity" class="tab-panel">
+          <div class="chart-wrap">
+            <div class="chart-title">Equity Curve — Capital Over Time</div>
+            <canvas id="equity-canvas" height="280"></canvas>
+          </div>
+          <div class="chart-wrap">
+            <div class="chart-title">P&L Per Trade</div>
+            <canvas id="pnl-canvas" height="140"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let currentResult  = null;
+let selectedFile   = null;
+let pollInterval   = null;
+let dateMode       = 'days';
+
+const API = 'http://localhost:8081/api';
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.onload = () => {
+  loadDatasets();
+  // Set date fields to today and 7 days ago
+  const now   = new Date();
+  const week  = new Date(now - 7*86400000);
+  document.getElementById('date-to').value   = now.toISOString().slice(0,10);
+  document.getElementById('date-from').value = week.toISOString().slice(0,10);
+
+  // Hide trigger field for non-MR strategies
+  document.getElementById('strategy').addEventListener('change', e => {
+    document.getElementById('trigger-field').style.display =
+      e.target.value === 'mean_reversion' ? 'block' : 'none';
+  });
+};
+
+// ── Date mode toggle ───────────────────────────────────────────────────────
+function setMode(mode) {
+  dateMode = mode;
+  document.getElementById('mode-days').style.display  = mode === 'days'  ? 'block' : 'none';
+  document.getElementById('mode-range').style.display = mode === 'range' ? 'block' : 'none';
+  document.querySelectorAll('.range-toggle button').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && mode === 'days') || (i === 1 && mode === 'range'));
+  });
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const ids = ['overview','trades','equity'];
+    t.classList.toggle('active', ids[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === `tab-${name}`);
+  });
+  if (name === 'equity' && currentResult) drawCharts(currentResult);
+}
+
+// ── Load dataset list ──────────────────────────────────────────────────────
+async function loadDatasets() {
+  try {
+    const r   = await fetch(`${API}/datasets`);
+    const dat = await r.json();
+    const el  = document.getElementById('dataset-list');
+    if (!dat.files || dat.files.length === 0) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--dim);padding:4px 8px">No datasets yet — fetch data first</div>';
+      return;
+    }
+    el.innerHTML = dat.files.map(f =>
+      `<div class="file-item" onclick="selectFile('${f}')" id="fi-${f.replace(/\./g,'_')}">${f}</div>`
+    ).join('');
+  } catch(e) {
+    document.getElementById('fetch-msg').textContent = 'Server not running';
+  }
+}
+
+function selectFile(fname) {
+  selectedFile = fname;
+  document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
+  const id = 'fi-' + fname.replace(/\./g,'_');
+  const el = document.getElementById(id);
+  if (el) el.classList.add('selected');
+  document.getElementById('fetch-msg').textContent = `Selected: ${fname}`;
+}
+
+// ── Fetch data ─────────────────────────────────────────────────────────────
+async function fetchData() {
+  const params = buildDateParams();
+  setRunning('fetch');
+
+  try {
+    await fetch(`${API}/fetch`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(params),
+    });
+    pollStatus('fetch');
+  } catch(e) {
+    setBadge('error', 'Server not reachable — is backtest/server.py running?');
+  }
+}
+
+// ── Run backtest ───────────────────────────────────────────────────────────
+async function runBacktest() {
+  const params = {
+    strategy: document.getElementById('strategy').value,
+    capital:  parseFloat(document.getElementById('capital').value),
+    bet:      parseFloat(document.getElementById('bet').value),
+    trigger:  parseFloat(document.getElementById('trigger').value),
+    min_vol:  parseFloat(document.getElementById('min-vol').value),
+    ...buildDateParams(),
+  };
+  if (selectedFile) params.file = `backtest/data/${selectedFile}`;
+
+  setRunning('run');
+
+  try {
+    await fetch(`${API}/run`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(params),
+    });
+    pollStatus('run');
+  } catch(e) {
+    setBadge('error', 'Server not reachable — start: python -m backtest.server');
+  }
+}
+
+function buildDateParams() {
+  if (dateMode === 'days') {
+    return { days: parseInt(document.getElementById('days').value) };
+  }
+  return {
+    date_from: document.getElementById('date-from').value,
+    date_to:   document.getElementById('date-to').value,
+  };
+}
+
+// ── Poll job status ────────────────────────────────────────────────────────
+function pollStatus(mode) {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(async () => {
+    try {
+      const r   = await fetch(`${API}/status`);
+      const dat = await r.json();
+
+      document.getElementById('progress-text').textContent = dat.progress || '';
+
+      if (dat.status === 'running') {
+        setBadge('running', dat.progress);
+        const dot = document.getElementById('fetch-dot');
+        dot.className = 'progress-dot running';
+        document.getElementById('fetch-msg').textContent = dat.progress;
+
+      } else if (dat.status === 'done') {
+        clearInterval(pollInterval);
+        setBadge('done', 'Done');
+        document.getElementById('fetch-dot').className = 'progress-dot';
+        document.getElementById('run-btn').disabled   = false;
+        document.getElementById('fetch-btn').disabled = false;
+
+        if (mode === 'fetch') {
+          document.getElementById('fetch-msg').textContent = dat.progress;
+          loadDatasets();
+        } else {
+          const rr = await fetch(`${API}/latest_result`);
+          const res = await rr.json();
+          if (res.comparison) {
+            showComparison(res.comparison);
+          } else {
+            showResult(res);
+          }
+        }
+
+      } else if (dat.status === 'error') {
+        clearInterval(pollInterval);
+        setBadge('error', 'Error');
+        document.getElementById('fetch-dot').className = 'progress-dot error';
+        document.getElementById('fetch-msg').textContent = dat.error;
+        document.getElementById('run-btn').disabled   = false;
+        document.getElementById('fetch-btn').disabled = false;
+      }
+    } catch(e) {}
+  }, 800);
+}
+
+function setRunning(mode) {
+  setBadge('running', 'Running...');
+  document.getElementById('run-btn').disabled   = true;
+  document.getElementById('fetch-btn').disabled = true;
+}
+
+function setBadge(status, text) {
+  const el = document.getElementById('status-badge');
+  el.className = `status-badge ${status}`;
+  el.textContent = text || status;
+}
+
+// ── Show results ───────────────────────────────────────────────────────────
+function showResult(res) {
+  currentResult = res;
+  document.getElementById('empty-state').style.display    = 'none';
+  document.getElementById('results-content').style.display = 'block';
+
+  // Stats cards
+  const pnlColor  = res.total_pnl   >= 0 ? 'green' : 'red';
+  const roiColor  = res.roi_pct      >= 0 ? 'green' : 'red';
+  const wrColor   = res.win_rate >= 0.65  ? 'green' : res.win_rate < 0.5 ? 'red' : 'orange';
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value ${wrColor}">${(res.win_rate*100).toFixed(1)}%</div>
+      <div class="stat-sub">${res.n_wins}W / ${res.n_losses}L of ${res.n_signals} trades</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total P&L</div>
+      <div class="stat-value ${pnlColor}">${res.total_pnl >= 0 ? '+' : ''}$${res.total_pnl.toFixed(2)}</div>
+      <div class="stat-sub">Avg $${res.avg_profit.toFixed(2)}/trade</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Final Capital</div>
+      <div class="stat-value cyan">$${res.final_capital.toFixed(2)}</div>
+      <div class="stat-sub">Started $${res.starting_capital.toFixed(2)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">ROI</div>
+      <div class="stat-value ${roiColor}">${res.roi_pct >= 0 ? '+' : ''}${res.roi_pct.toFixed(1)}%</div>
+      <div class="stat-sub">Max drawdown ${res.max_drawdown.toFixed(1)}%</div>
+    </div>
+  `;
+
+  // Win rate bar
+  const wr = res.win_rate;
+  const barColor = wr >= 0.65 ? 'var(--green)' : wr < 0.5 ? 'var(--red)' : 'var(--orange)';
+  document.getElementById('wr-big').textContent        = `${(wr*100).toFixed(1)}%`;
+  document.getElementById('wr-big').className          = wr >= 0.65 ? 'green' : wr < 0.5 ? 'red' : 'orange';
+  document.getElementById('wr-sub').textContent        = `${res.n_wins} wins out of ${res.n_signals} signals`;
+  document.getElementById('wr-bar').style.width        = `${wr * 100}%`;
+  document.getElementById('wr-bar').style.background   = barColor;
+
+  // Summary
+  const viable = res.win_rate >= 0.55 && res.total_pnl > 0;
+  document.getElementById('summary-text').innerHTML = `
+    <span style="color:var(--text)">Strategy:</span> ${res.strategy_name} &nbsp;·&nbsp;
+    <span style="color:var(--text)">Period:</span> ${res.date_from} → ${res.date_to} &nbsp;·&nbsp;
+    <span style="color:var(--text)">Markets sampled:</span> ${res.n_markets.toLocaleString()}<br>
+    <span style="color:var(--text)">Signals fired:</span> ${res.n_signals} (${res.n_markets > 0 ? (res.n_signals/res.n_markets*100).toFixed(1) : 0}% of markets)<br>
+    <span style="color:${viable ? 'var(--green)' : 'var(--red)'};font-weight:600">
+      ${viable ? '✓ Strategy looks viable on this dataset' : '✗ Strategy not profitable on this dataset'}
+    </span><br>
+    <span style="color:var(--dim)">Note: Historical data uses final prices as proxy for p30 signal. Live performance may differ.</span>
+  `;
+
+  // Trade table
+  buildTradeTable(res.trades);
+
+  // Charts (render when tab is active)
+  if (document.getElementById('tab-equity').classList.contains('active')) {
+    drawCharts(res);
+  }
+}
+
+function showComparison(results) {
+  currentResult = results[0];
+  document.getElementById('empty-state').style.display    = 'none';
+  document.getElementById('results-content').style.display = 'block';
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card" style="grid-column:1/-1">
+      <div class="stat-label" style="margin-bottom:12px">Strategy Comparison</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse" class="compare-table">
+          <thead>
+            <tr>
+              <th style="padding:6px 12px;text-align:left;font-size:10px;letter-spacing:.12em;color:var(--dim)">Strategy</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;color:var(--dim)">Signals</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;color:var(--dim)">Win Rate</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;color:var(--dim)">P&L</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;color:var(--dim)">ROI</th>
+              <th style="padding:6px 12px;text-align:right;font-size:10px;color:var(--dim)">Max DD</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${results.map(r => {
+              const wr = r.win_rate;
+              const wc = wr >= 0.65 ? 'var(--green)' : wr < 0.5 ? 'var(--red)' : 'var(--orange)';
+              const pc = r.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+              return `
+                <tr>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);font-size:12px">${r.strategy_name}</td>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);text-align:right">${r.n_signals}</td>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);text-align:right;color:${wc}">${(wr*100).toFixed(1)}%</td>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);text-align:right;color:${pc}">${r.total_pnl >= 0 ? '+' : ''}$${r.total_pnl.toFixed(2)}</td>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);text-align:right;color:${pc}">${r.roi_pct >= 0 ? '+' : ''}${r.roi_pct.toFixed(1)}%</td>
+                  <td style="padding:7px 12px;border-top:1px solid var(--border);text-align:right;color:var(--orange)">${r.max_drawdown.toFixed(1)}%</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('wr-section').style.display  = 'none';
+  document.getElementById('summary-text').innerHTML =
+    `<span style="color:var(--dim)">Comparison of ${results.length} strategies over ${results[0]?.date_from} → ${results[0]?.date_to}</span>`;
+
+  // Show trades of first result
+  buildTradeTable(results[0]?.trades || []);
+}
+
+// ── Trade table ────────────────────────────────────────────────────────────
+function buildTradeTable(trades) {
+  document.getElementById('trade-count').textContent = `${trades.length} trades`;
+  const tbody = document.getElementById('trades-body');
+  tbody.innerHTML = trades.map((t, i) => {
+    const dc  = t.direction === 'UP' ? 'badge-up' : 'badge-down';
+    const rc  = t.won ? 'badge-win' : 'badge-loss';
+    const pc  = t.profit >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    const dt  = new Date(t.open_dt).toLocaleString('en-GB',
+      { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    return `
+      <tr>
+        <td style="color:var(--dim)">${i+1}</td>
+        <td>${dt}</td>
+        <td><span class="badge ${dc}">${t.direction}</span></td>
+        <td>${t.entry_price.toFixed(4)}</td>
+        <td style="color:${t.outcome === 'UP' ? 'var(--green)' : 'var(--red)'}">${t.outcome}</td>
+        <td><span class="badge ${rc}">${t.won ? 'WIN' : 'LOSS'}</span></td>
+        <td style="${pc}">${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)}</td>
+        <td style="${pc}">${t.roi_pct >= 0 ? '+' : ''}${t.roi_pct.toFixed(1)}%</td>
+        <td style="color:var(--dim)">$${t.volume.toLocaleString('en',{maximumFractionDigits:0})}</td>
+        <td><a href="${t.url}" target="_blank">↗</a></td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+function drawCharts(res) {
+  if (!res.trades || res.trades.length === 0) return;
+
+  // Equity curve
+  const eq = document.getElementById('equity-canvas');
+  drawLineChart(eq, buildEquityCurve(res), {
+    lineColor: res.final_capital >= res.starting_capital ? '#50e890' : '#f05050',
+    fillColor: res.final_capital >= res.starting_capital ? 'rgba(80,232,144,0.08)' : 'rgba(240,80,80,0.08)',
+    baseline:  res.starting_capital,
+  });
+
+  // P&L per trade bars
+  const pnl = document.getElementById('pnl-canvas');
+  drawBarChart(pnl, res.trades.map(t => t.profit));
+}
+
+function buildEquityCurve(res) {
+  let cap = res.starting_capital;
+  const pts = [{ x: 0, y: cap, label: 'Start' }];
+  res.trades.forEach((t, i) => {
+    cap += t.profit;
+    pts.push({ x: i + 1, y: cap, label: t.open_dt.slice(0, 10) });
+  });
+  return pts;
+}
+
+function drawLineChart(canvas, pts, opts) {
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.parentElement.clientWidth - 32;
+  const H   = parseInt(canvas.getAttribute('height'));
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const PAD = { top: 16, right: 16, bottom: 28, left: 56 };
+  const cw  = W - PAD.left - PAD.right;
+  const ch  = H - PAD.top  - PAD.bottom;
+
+  const ys = pts.map(p => p.y);
+  const mn = Math.min(...ys) * 0.995;
+  const mx = Math.max(...ys) * 1.005;
+
+  const xp = i => PAD.left + (i / (pts.length - 1 || 1)) * cw;
+  const yp = v => PAD.top  + (1 - (v - mn) / (mx - mn || 1)) * ch;
+
+  // Grid
+  ctx.strokeStyle = '#1c2229';
+  ctx.lineWidth   = 1;
+  for (let g = 0; g <= 4; g++) {
+    const y = PAD.top + g * ch / 4;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y);
+    ctx.stroke();
+    const val = mx - g * (mx - mn) / 4;
+    ctx.fillStyle = '#5a6a7a';
+    ctx.font      = '10px IBM Plex Mono';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + val.toFixed(0), PAD.left - 6, y + 4);
+  }
+
+  // Baseline
+  if (opts.baseline !== undefined) {
+    const by = yp(opts.baseline);
+    ctx.strokeStyle = '#2a3a4a';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(PAD.left, by); ctx.lineTo(W - PAD.right, by);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(pts[0].y));
+  pts.forEach((p, i) => ctx.lineTo(xp(i), yp(p.y)));
+  ctx.lineTo(xp(pts.length - 1), H - PAD.bottom);
+  ctx.lineTo(xp(0), H - PAD.bottom);
+  ctx.closePath();
+  ctx.fillStyle = opts.fillColor;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(pts[0].y));
+  pts.forEach((p, i) => ctx.lineTo(xp(i), yp(p.y)));
+  ctx.strokeStyle = opts.lineColor;
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // End dot
+  const lx = xp(pts.length - 1), ly = yp(pts[pts.length - 1].y);
+  ctx.beginPath();
+  ctx.arc(lx, ly, 3.5, 0, Math.PI * 2);
+  ctx.fillStyle = opts.lineColor;
+  ctx.fill();
+}
+
+function drawBarChart(canvas, values) {
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.parentElement.clientWidth - 32;
+  const H   = parseInt(canvas.getAttribute('height'));
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const PAD  = { top: 10, right: 16, bottom: 10, left: 56 };
+  const cw   = W - PAD.left - PAD.right;
+  const ch   = H - PAD.top  - PAD.bottom;
+  const mid  = PAD.top + ch / 2;
+  const mx   = Math.max(...values.map(Math.abs), 1);
+  const bw   = Math.max(1, cw / values.length - 1);
+
+  // Zero line
+  ctx.strokeStyle = '#2a3a4a';
+  ctx.lineWidth   = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.left, mid); ctx.lineTo(W - PAD.right, mid);
+  ctx.stroke();
+
+  values.forEach((v, i) => {
+    const x = PAD.left + i * (cw / values.length);
+    const h = Math.abs(v) / mx * (ch / 2 - 4);
+    const y = v >= 0 ? mid - h : mid;
+    ctx.fillStyle = v >= 0 ? 'rgba(80,232,144,0.7)' : 'rgba(240,80,80,0.7)';
+    ctx.fillRect(x + 1, y, Math.max(1, bw - 2), h);
+  });
+}
+
+// ── Initial dataset load ───────────────────────────────────────────────────
+loadDatasets();
+</script>
+</body>
+</html>

@@ -1,34 +1,34 @@
-# ── Polymarket Bot — Configuration ────────────────────────────────────────
+# ── Polymarket Sniper v2 — Configuration ──────────────────────────────────────
 
 # Copy Trader
 copy_trader:
-  target_wallet:   "0x63ce342161250d705dc0b16df89036c8e5f9ba9a"
+  target_wallet:  "0x63ce342161250d705dc0b16df89036c8e5f9ba9a"
   starting_budget: 100.0
   scale:           0.5          # bet 50% of what target bets
   poll_interval:   5            # seconds between wallet checks
 
 # Mean Reversion Strategy ($100 paper budget)
 mean_reversion:
-  budget:          100.0
-  bet_size:        10.0
-  trigger_dist:    0.05         # price must be >5% from 0.50 to fire
+  budget:         100.0
+  bet_size:       10.0
+  trigger_dist:   0.05          # price must be >5% from 0.50 to fire
 
 # Volume Spike Sniper ($100 paper budget)
 sniper:
-  budget:          100.0
-  bet_size:        10.0
-  vol_ratio:       10.0         # volume spike multiplier threshold
-  min_move:        0.12         # minimum price move to trigger
+  budget:         100.0
+  bet_size:       10.0
+  vol_ratio:      10.0          # volume spike multiplier threshold
+  min_move:       0.12          # minimum price move to trigger
 
 # Data Collector
 collector:
-  poll_interval:   8            # seconds between API calls
-  snapshots:       [240, 180, 120, 60, 30, 10]
+  poll_interval:  8             # seconds between API calls
+  snapshots:      [240, 180, 120, 60, 30, 10]
 
 # APIs
 apis:
-  gamma:  "https://gamma-api.polymarket.com"
-  data:   "https://data-api.polymarket.com"
+  gamma:    "https://gamma-api.polymarket.com"
+  data:     "https://data-api.polymarket.com"
 
 # Paths
 paths:

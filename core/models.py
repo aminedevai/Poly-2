@@ -1,11 +1,10 @@
-"""core/models.py — Shared dataclasses used across all modules."""
+"""core/models.py — Shared data classes."""
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from utils.time_helpers import slug_close_ts
+from utils.time_helpers import slug_close_ts, time_left_from_ts
 
-
-# ── Copy Trader ───────────────────────────────────────────────────────────────
+# ── Copy Trader ────────────────────────────────────────────────────────────────
 
 @dataclass
 class Position:
@@ -19,21 +18,17 @@ class Position:
         ts = slug_close_ts(self.slug)
         if ts: return ts
         if self.end_date:
-            try:
-                return int(datetime.fromisoformat(
-                    self.end_date.replace("Z", "+00:00")).timestamp())
-            except:
-                pass
+            try: return int(datetime.fromisoformat(self.end_date.replace('Z', '+00:00')).timestamp())
+            except: pass
         return 0
 
     @property
-    def url(self):     return f"https://polymarket.com/event/{self.slug}"
+    def url(self): return f"https://polymarket.com/event/{self.slug}"
     @property
-    def pnl(self):     return self.cur_value - self.entry_amount
+    def pnl(self): return self.cur_value - self.entry_amount
     @property
     def roi_pct(self):
-        return ((self.cur_price - self.entry_price) / self.entry_price * 100
-                if self.entry_price > 0 else 0.0)
+        return (self.cur_price - self.entry_price) / self.entry_price * 100 if self.entry_price > 0 else 0.0
 
 
 @dataclass
@@ -46,33 +41,31 @@ class ClosedTrade:
     reason: str = "closed"
 
     @property
-    def url(self):     return f"https://polymarket.com/event/{self.slug}"
+    def url(self): return f"https://polymarket.com/event/{self.slug}"
     @property
     def roi_pct(self):
-        return ((self.exit_price - self.entry_price) / self.entry_price * 100
-                if self.entry_price > 0 else 0.0)
+        return (self.exit_price - self.entry_price) / self.entry_price * 100 if self.entry_price > 0 else 0.0
 
-    def to_dict(self) -> dict:
-        return {k: getattr(self, k) for k in [
-            "key", "market_title", "outcome", "slug",
-            "entry_price", "exit_price", "entry_amount", "exit_amount",
-            "realized_pnl", "closed_at", "reason",
-        ]}
+    def to_dict(self):
+        return {k: getattr(self, k) for k in
+                ['key', 'market_title', 'outcome', 'slug', 'entry_price',
+                 'exit_price', 'entry_amount', 'exit_amount',
+                 'realized_pnl', 'closed_at', 'reason']}
 
     @classmethod
     def from_dict(cls, d: dict):
-        keys = ["key", "market_title", "outcome", "slug",
-                "entry_price", "exit_price", "entry_amount", "exit_amount",
-                "realized_pnl", "closed_at", "reason"]
+        keys = ['key', 'market_title', 'outcome', 'slug', 'entry_price',
+                'exit_price', 'entry_amount', 'exit_amount',
+                'realized_pnl', 'closed_at', 'reason']
         return cls(**{k: d[k] for k in keys if k in d})
 
 
-# ── Strategy Trades ───────────────────────────────────────────────────────────
+# ── Strategies ────────────────────────────────────────────────────────────────
 
 @dataclass
 class SniperTrade:
-    slug: str; direction: str; entry_price: float
-    bet_size: float; vol_ratio: float; move: float
+    slug: str; direction: str; entry_price: float; bet_size: float
+    vol_ratio: float; move: float
     entered_at: float = field(default_factory=time.time)
     outcome: str = ""; exit_price: float = 0.0
     profit: float = 0.0; status: str = "open"
