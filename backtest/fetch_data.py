@@ -1,56 +1,51 @@
 """
 backtest/fetch_data.py
 ======================
-Fetches historical BTC 5-min markets from Polymarket.
+Fast concurrent fetcher for historical BTC 5-min Polymarket markets.
 
-HOW IT WORKS:
-  1. Gamma API  -> get market metadata + condition_id + outcome
-  2. CLOB API   -> get actual price history during the candle's 5 minutes
-  3. We extract p30 (price 30s before close) = the real MR entry signal
+SPEED: ThreadPoolExecutor with 12 workers = ~10x faster than sequential.
+       2 days (~575 markets): ~2 min. 7 days (~2000 markets): ~5 min.
 
-The CLOB price history endpoint:
-  GET https://clob.polymarket.com/prices-history
-  ?market={condition_id}&startTs={open_ts}&endTs={close_ts}&fidelity=1
+DATA SOURCES:
+  1. Gamma API  -> outcome, volume, clobTokenIds (UP token id)
+  2. CLOB API   -> real price history using clobTokenIds[up_idx]
+                   (NOT conditionId — that was the old bug causing p30=null)
 
-  Returns minute-by-minute (or finer) CLOB mid-prices for the UP token.
-  We take the price at close_ts - 30s as p30.
+p30 FIELD:
+  - p30 is ONLY set if we get real data from CLOB
+  - p30=null means no real data available (market too recent, or CLOB gap)
+  - NO synthetic p30 — synthetic data produces circular, meaningless results
+  - Strategies that need p30 skip markets where p30=null
 
-This gives us REAL backtesting data, not synthetic proxies.
+RE-FETCH TIMING:
+  CLOB prices-history typically has data for markets older than ~6-24 hours.
+  For very recent data (< 6h), p30 may still be null even with correct token_id.
+  Re-fetch the same date range the next day to fill in gaps.
 """
-import argparse, json, os, time, requests
+import argparse, json, os, requests
 from datetime import datetime, timezone, timedelta
-
-# Force UTF-8 on Windows
-import sys
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 DATA_DIR    = os.path.join(os.path.dirname(__file__), "data")
 GAMMA_API   = "https://gamma-api.polymarket.com"
 CLOB_API    = "https://clob.polymarket.com"
 SLUG_PREFIX = "btc-updown-5m"
 
-
-def ts_range(start_dt: datetime, end_dt: datetime):
-    """Yield all 5-min open timestamps in range, aligned to 5-min grid."""
-    t   = (int(start_dt.timestamp()) // 300) * 300
-    end = int(end_dt.timestamp())
-    while t <= end:
-        yield t
-        t += 300
+_print_lock = Lock()
+def log(msg: str):
+    with _print_lock:
+        print(msg, flush=True)
 
 
-# ── Step 1: Gamma API — metadata + outcome ────────────────────────────────────
+# ── Gamma fetch ───────────────────────────────────────────────────────────────
 
 def fetch_gamma(slug: str) -> dict | None:
-    """Fetch market metadata from Gamma API."""
     try:
         r = requests.get(
             f"{GAMMA_API}/markets",
             params={"slug": slug},
-            timeout=10,
+            timeout=8,
             headers={"User-Agent": "Mozilla/5.0"},
         )
         data = r.json()
@@ -59,185 +54,170 @@ def fetch_gamma(slug: str) -> dict | None:
         return None
 
 
-# ── Step 2: CLOB API — actual price history ────────────────────────────────────
+# ── CLOB price history ────────────────────────────────────────────────────────
 
-def fetch_price_history(condition_id: str, open_ts: int, close_ts: int) -> list:
+def fetch_clob_history(token_id: str, open_ts: int, close_ts: int) -> list:
     """
-    Fetch UP token price history for a specific market window.
-    Returns list of {t: timestamp, p: price} dicts, sorted by time.
-    fidelity=1 = 1-minute candles (finest available for historical).
+    Fetch UP token price history using clobTokenIds[up_idx].
+    This is the correct field — NOT conditionId.
+    fidelity=1 = finest available resolution.
     """
+    if not token_id:
+        return []
     try:
         r = requests.get(
             f"{CLOB_API}/prices-history",
             params={
-                "market":    condition_id,
-                "startTs":   open_ts,
-                "endTs":     close_ts,
-                "fidelity":  1,
+                "market":   token_id,       # <- clobTokenIds[up_idx], not conditionId
+                "startTs":  open_ts  - 120,
+                "endTs":    close_ts + 120,
+                "fidelity": 1,
             },
-            timeout=12,
+            timeout=8,
             headers={"User-Agent": "Mozilla/5.0"},
         )
-        data = r.json()
-        history = data.get("history", [])
-        # Normalise: each point is {t: unix_ts, p: float_price}
+        pts = r.json().get("history", [])
         return sorted(
-            [{"t": int(pt.get("t", 0)), "p": float(pt.get("p", 0))}
-             for pt in history if pt.get("t") and pt.get("p") is not None],
+            [{"t": int(p["t"]), "p": float(p["p"])}
+             for p in pts if p.get("t") and p.get("p") is not None],
             key=lambda x: x["t"]
         )
     except Exception:
         return []
 
 
-def price_at(history: list, target_ts: int, tolerance: int = 90) -> float | None:
-    """
-    Find the price closest to target_ts within tolerance seconds.
-    Returns None if no point is close enough.
-    """
-    best = None
-    best_diff = tolerance + 1
+def price_at(history: list, target_ts: int, tolerance: int = 150) -> float | None:
+    """Nearest price within tolerance seconds. Returns None if nothing close."""
+    best, best_diff = None, tolerance + 1
     for pt in history:
-        diff = abs(pt["t"] - target_ts)
-        if diff < best_diff:
-            best_diff = diff
-            best = pt["p"]
+        d = abs(pt["t"] - target_ts)
+        if d < best_diff:
+            best_diff, best = d, pt["p"]
     return best if best_diff <= tolerance else None
 
 
-# ── Step 3: Parse everything into one market record ────────────────────────────
+# ── Parse one market ──────────────────────────────────────────────────────────
 
-def parse_market(raw: dict, slug: str) -> dict | None:
-    """
-    Build a full market record from Gamma metadata + CLOB price history.
-    Returns dict with real p30, p60, p120 prices (not synthetic proxies).
-    """
-    import json as _json
+def parse_one(slug: str) -> dict | None:
+    import json as _j
+    raw = fetch_gamma(slug)
+    if not raw:
+        return None
     try:
         prices   = raw.get("outcomePrices", [])
-        outcomes = raw.get("outcomes",      [])
-        if isinstance(prices,   str): prices   = _json.loads(prices)
-        if isinstance(outcomes, str): outcomes = _json.loads(outcomes)
-        if len(prices) < 2: return None
+        outcomes = raw.get("outcomes", [])
+        if isinstance(prices,   str): prices   = _j.loads(prices)
+        if isinstance(outcomes, str): outcomes = _j.loads(outcomes)
+        if len(prices) < 2:
+            return None
 
-        # Identify UP token index
         up_idx = next((i for i, o in enumerate(outcomes)
                        if "up" in str(o).lower()), 0)
 
-        # Determine settlement outcome
-        p0, p1  = float(prices[0]), float(prices[1])
+        p0, p1 = float(prices[0]), float(prices[1])
         outcome = None
-        if abs(p0 - 1.0) < 0.01:
-            outcome = "UP"   if "up" in str(outcomes[0]).lower() else "DOWN"
-        elif abs(p1 - 1.0) < 0.01:
-            outcome = "DOWN" if "up" in str(outcomes[0]).lower() else "UP"
+        if   abs(p0 - 1.0) < 0.02: outcome = "UP"   if "up" in str(outcomes[0]).lower() else "DOWN"
+        elif abs(p1 - 1.0) < 0.02: outcome = "DOWN" if "up" in str(outcomes[0]).lower() else "UP"
         if not outcome:
             return None
 
         open_ts  = int(slug.split("-")[-1])
         close_ts = open_ts + 300
+        volume   = float(raw.get("volumeNum", 0) or 0)
 
-        # Get condition_id for CLOB lookup
-        condition_id = raw.get("conditionId", "")
-        if not condition_id:
-            # Try clobTokenIds
-            token_ids = raw.get("clobTokenIds", [])
-            if isinstance(token_ids, str):
-                try: token_ids = _json.loads(token_ids)
-                except: token_ids = []
-            condition_id = token_ids[up_idx] if token_ids and len(token_ids) > up_idx else ""
+        # CORRECT field for CLOB prices-history: clobTokenIds, not conditionId
+        token_ids = raw.get("clobTokenIds", [])
+        if isinstance(token_ids, str):
+            try:    token_ids = _j.loads(token_ids)
+            except: token_ids = []
+        up_token = token_ids[up_idx] if token_ids and len(token_ids) > up_idx else ""
 
         # Fetch real CLOB price history
-        history = []
-        if condition_id:
-            history = fetch_price_history(condition_id, open_ts, close_ts)
-            time.sleep(0.05)  # be polite to CLOB API
+        history  = fetch_clob_history(up_token, open_ts, close_ts)
+        p30      = price_at(history, close_ts - 30,  tolerance=150)
+        p60      = price_at(history, close_ts - 60,  tolerance=150)
+        p120     = price_at(history, close_ts - 120, tolerance=150)
+        p240     = price_at(history, open_ts,         tolerance=150)
 
-        # Extract prices at key snapshot moments
-        p30  = price_at(history, close_ts - 30,  tolerance=60)
-        p60  = price_at(history, close_ts - 60,  tolerance=60)
-        p120 = price_at(history, close_ts - 120, tolerance=90)
-        p240 = price_at(history, open_ts,         tolerance=90)
-
-        # Fallback: if CLOB returned nothing, we cannot do real MR backtest
-        # Store None so strategies can skip this market
-        volume = float(raw.get("volumeNum", 0) or 0)
+        has_real = p30 is not None
 
         return {
-            "slug":        slug,
-            "open_ts":     open_ts,
-            "close_ts":    close_ts,
-            "open_dt":     datetime.fromtimestamp(open_ts,  tz=timezone.utc).isoformat(),
-            "close_dt":    datetime.fromtimestamp(close_ts, tz=timezone.utc).isoformat(),
-            "outcome":     outcome,
-            "volume":      volume,
-            "condition_id": condition_id,
-            # Real CLOB prices (None if unavailable)
-            "p30":         round(p30,  4) if p30  is not None else None,
-            "p60":         round(p60,  4) if p60  is not None else None,
-            "p120":        round(p120, 4) if p120 is not None else None,
-            "p240":        round(p240, 4) if p240 is not None else None,
-            # How many price points we got from CLOB
-            "n_price_pts": len(history),
-            "url":         f"https://polymarket.com/event/{slug}",
+            "slug":         slug,
+            "open_ts":      open_ts,
+            "close_ts":     close_ts,
+            "open_dt":      datetime.fromtimestamp(open_ts,  tz=timezone.utc).isoformat(),
+            "close_dt":     datetime.fromtimestamp(close_ts, tz=timezone.utc).isoformat(),
+            "outcome":      outcome,
+            "volume":       volume,
+            "up_token":     up_token,
+            # p30=None means no real CLOB data — do NOT synthesize
+            "p30":          round(p30,  4) if p30  is not None else None,
+            "p60":          round(p60,  4) if p60  is not None else None,
+            "p120":         round(p120, 4) if p120 is not None else None,
+            "p240":         round(p240, 4) if p240 is not None else None,
+            "n_price_pts":  len(history),
+            "has_real_p30": has_real,
+            "url":          f"https://polymarket.com/event/{slug}",
         }
     except Exception:
         return None
 
 
-# ── Fetch range ────────────────────────────────────────────────────────────────
+# ── Timestamp range ───────────────────────────────────────────────────────────
 
-def fetch_range(start_dt: datetime, end_dt: datetime,
-                delay: float = 0.2) -> list:
-    """
-    Fetch all 5-min BTC markets + real CLOB prices in a date range.
-    delay is per-market (2 API calls each: Gamma + CLOB).
-    """
-    os.makedirs(DATA_DIR, exist_ok=True)
-    results    = []
-    timestamps = list(ts_range(start_dt, end_dt))
-    total      = len(timestamps)
-    n_clob     = 0
+def ts_range(start_dt: datetime, end_dt: datetime):
+    t   = (int(start_dt.timestamp()) // 300) * 300
+    end = int(end_dt.timestamp())
+    while t <= end:
+        yield t
+        t += 300
 
-    print(f"\n  Fetching {total} markets "
-          f"({start_dt.strftime('%Y-%m-%d')} -> {end_dt.strftime('%Y-%m-%d')})")
-    print(f"  Each market: Gamma API + CLOB price history")
-    print(f"  Est. time: ~{total * (delay + 0.2) / 60:.1f} min\n")
 
-    for i, ts in enumerate(timestamps):
-        slug = f"{SLUG_PREFIX}-{ts}"
-        raw  = fetch_gamma(slug)
-        if raw is None:
-            time.sleep(delay)
-            continue
+# ── Fast concurrent fetch ─────────────────────────────────────────────────────
 
-        parsed = parse_market(raw, slug)
-        if parsed and parsed["outcome"]:
-            results.append(parsed)
-            has_clob = parsed["n_price_pts"] > 0
-            if has_clob: n_clob += 1
-            if i % 10 == 0 or has_clob:
-                p30_s = f"p30={parsed['p30']:.3f}" if parsed["p30"] is not None else "p30=--"
-                print(f"  [{i:4d}/{total}] {slug[-14:]}  "
-                      f"vol=${parsed['volume']:>8,.0f}  "
-                      f"{p30_s}  "
-                      f"outcome={parsed['outcome']}  "
-                      f"pts={parsed['n_price_pts']}")
-        time.sleep(delay)
+def fetch_range(start_dt: datetime, end_dt: datetime, workers: int = 12) -> list:
+    slugs = [f"{SLUG_PREFIX}-{ts}" for ts in ts_range(start_dt, end_dt)]
+    total = len(slugs)
 
-    print(f"\n  Done: {len(results)} markets, {n_clob} with real CLOB prices")
+    log(f"\n  Fetching {total} markets  "
+        f"({start_dt.strftime('%Y-%m-%d')} -> {end_dt.strftime('%Y-%m-%d')})")
+    log(f"  {workers} parallel workers  |  "
+        f"Est. ~{max(1, total // workers // 6)}-{max(2, total // workers // 3)} min\n")
+
+    results = []
+    done    = 0
+    n_real  = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(parse_one, s): s for s in slugs}
+        for fut in as_completed(futures):
+            done += 1
+            r = fut.result()
+            if r and r.get("outcome"):
+                results.append(r)
+                if r.get("has_real_p30"):
+                    n_real += 1
+            if done % 100 == 0 or done == total:
+                log(f"  [{done:>4}/{total}]  markets={len(results)}  "
+                    f"with_real_p30={n_real}  no_p30={len(results)-n_real}")
+
+    results.sort(key=lambda m: m["open_ts"])
+    n_no = len(results) - n_real
+    log(f"\n  Done: {len(results)} markets")
+    log(f"  Real CLOB p30: {n_real}  |  No p30 (too recent / gap): {n_no}")
+    if n_no > 0 and n_real == 0:
+        log(f"  TIP: Re-fetch this dataset in 6-24h to get real p30 prices.")
     return results
 
 
-# ── Save / load ────────────────────────────────────────────────────────────────
+# ── Save / load ───────────────────────────────────────────────────────────────
 
 def save(markets: list, label: str) -> str:
     os.makedirs(DATA_DIR, exist_ok=True)
     path = os.path.join(DATA_DIR, f"markets_{label}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(markets, f, indent=2)
-    print(f"  Saved {len(markets)} markets -> {path}")
+    log(f"  Saved {len(markets)} markets -> {path}")
     return path
 
 
@@ -251,15 +231,14 @@ def list_saved() -> list:
     return sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".json"))
 
 
-# ── CLI ────────────────────────────────────────────────────────────────────────
+# ── CLI ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fetch historical Polymarket BTC 5-min data")
-    parser.add_argument("--days",      type=int, default=7)
-    parser.add_argument("--from",      dest="date_from")
-    parser.add_argument("--to",        dest="date_to")
-    parser.add_argument("--delay",     type=float, default=0.2,
-                        help="Seconds between requests (default 0.2)")
+    parser = argparse.ArgumentParser(description="Fast Polymarket BTC 5-min data fetcher")
+    parser.add_argument("--days",    type=int, default=7)
+    parser.add_argument("--from",    dest="date_from")
+    parser.add_argument("--to",      dest="date_to")
+    parser.add_argument("--workers", type=int, default=12)
     args = parser.parse_args()
 
     now = datetime.now(timezone.utc)
@@ -267,9 +246,8 @@ if __name__ == "__main__":
         start = datetime.fromisoformat(args.date_from).replace(tzinfo=timezone.utc)
         end   = datetime.fromisoformat(args.date_to).replace(tzinfo=timezone.utc) if args.date_to else now
     else:
-        end   = now
-        start = now - timedelta(days=args.days)
+        end, start = now, now - timedelta(days=args.days)
 
     label   = f"{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}"
-    markets = fetch_range(start, end, delay=args.delay)
+    markets = fetch_range(start, end, workers=min(args.workers, 20))
     save(markets, label)

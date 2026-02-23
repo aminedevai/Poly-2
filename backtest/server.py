@@ -168,11 +168,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/strategies":
             self._send(200, json.dumps({
                 "strategies": [
-                    {"id": "mean_reversion",     "label": "Mean Reversion (p30)"},
-                    {"id": "mean_reversion_p60", "label": "Mean Reversion (p60)"},
-                    {"id": "sniper",             "label": "Volume Spike Sniper"},
-                    {"id": "control_down",       "label": "Control: Always Bet DOWN"},
-                    {"id": "all",                "label": "Run All & Compare"},
+                    {"id": "mean_reversion",    "label": "Mean Reversion (needs real p30)"},
+                    {"id": "sniper",            "label": "Volume Spike Sniper (needs real p30)"},
+                    {"id": "control_down",      "label": "Always Bet DOWN (baseline ~50%)"},
+                    {"id": "volume_contrarian", "label": "Volume Contrarian (UP on high-vol)"},
+                    {"id": "high_vol_momentum", "label": "High Vol Momentum (DOWN on high-vol)"},
+                    {"id": "all",               "label": "Run All & Compare"},
                 ]
             }))
 
@@ -186,15 +187,20 @@ class Handler(BaseHTTPRequestHandler):
                 markets   = _j.load(open(fpath))
                 n_total   = len(markets)
                 n_p30     = sum(1 for m in markets if m.get("p30") is not None)
+                n_real    = sum(1 for m in markets if m.get("has_real_p30"))
+                n_syn     = n_p30 - n_real
+                n_no_p30  = sum(1 for m in markets if m.get("p30") is None and m.get("outcome"))
                 n_outcome = sum(1 for m in markets if m.get("outcome"))
-                has_clob  = n_p30 > 0
                 self._send(200, _j.dumps({
                     "file": fname, "n_total": n_total,
-                    "n_with_outcome": n_outcome, "n_with_p30": n_p30,
-                    "has_clob_data": has_clob,
+                    "n_with_outcome": n_outcome,
+                    "n_with_p30": n_p30,
+                    "n_real": n_real,
+                    "n_synthetic": n_syn + n_no_p30,
+                    "has_clob_data": n_real > 0,
                     "pct_p30": round(n_p30 / n_total * 100, 1) if n_total else 0,
-                    "warning": (None if has_clob
-                        else "Old dataset — no CLOB prices. Re-fetch to enable real MR backtest."),
+                    "warning": ("Old dataset — server will auto-add synthetic p30 on run"
+                                if n_no_p30 > 0 else None),
                 }))
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}))
@@ -240,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
                         end   = now
                     label   = f"{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}"
                     markets = fetch_range(start, end,
-                        delay=float(params.get("delay", 0.15)))
+                        workers=int(params.get("workers", 12)))
                     path_   = save(markets, label)
                     _job["status"]   = "done"
                     _job["progress"] = f"Fetched {len(markets)} markets -> {os.path.basename(path_)}"

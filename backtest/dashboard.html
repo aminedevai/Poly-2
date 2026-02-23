@@ -479,11 +479,12 @@
       <div class="field">
         <label>Select strategy</label>
         <select id="strategy">
-          <option value="mean_reversion">Mean Reversion (p30)</option>
-          <option value="mean_reversion_p60">Mean Reversion (p60)</option>
-          <option value="sniper">Volume Spike Sniper</option>
-          <option value="control_down">Control: Always Bet DOWN</option>
-          <option value="all">Run All & Compare</option>
+          <option value="control_down">Always Bet DOWN (baseline ~50%)</option>
+          <option value="volume_contrarian">Volume Contrarian (UP on high-vol)</option>
+          <option value="high_vol_momentum">High Vol Momentum (DOWN on high-vol)</option>
+          <option value="mean_reversion">Mean Reversion (needs real p30)</option>
+          <option value="sniper">Volume Spike Sniper (needs real p30)</option>
+          <option value="all">Run All &amp; Compare</option>
         </select>
       </div>
     </div>
@@ -688,7 +689,7 @@ window.onload = () => {
   // Hide trigger field for non-MR strategies
   document.getElementById('strategy').addEventListener('change', e => {
     document.getElementById('trigger-field').style.display =
-      e.target.value.startsWith('mean_reversion') ? 'block' : 'none';
+      e.target.value === 'mean_reversion' ? 'block' : 'none';
   });
 };
 
@@ -746,13 +747,15 @@ async function selectFile(fname) {
     const dat = await r.json();
     const warnEl = document.getElementById('clob-warning');
     const okEl   = document.getElementById('clob-ok');
-    if (dat.warning) {
+    if (dat.warning && !dat.n_real) {
       warnEl.textContent = dat.warning;
       warnEl.style.display = 'block';
       okEl.style.display   = 'none';
     } else {
       warnEl.style.display = 'none';
-      okEl.textContent = `Dataset OK: ${dat.n_with_p30} of ${dat.n_total} markets have real p30 prices (${dat.pct_p30}%)`;
+      okEl.innerHTML = (dat.n_real > 0)
+            ? `${dat.n_real} real CLOB p30 + ${dat.n_synthetic || 0} synthetic / ${dat.n_total} markets`
+            : `${dat.n_total} markets with synthetic p30 (re-fetch after 48h for real CLOB prices)`;
       okEl.style.display = 'block';
     }
   } catch(e) {}
