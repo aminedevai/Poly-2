@@ -86,7 +86,7 @@ class MarketTracker:
             'url':        f"https://polymarket.com/event/{self.slug}",
         }
 
-    def tick(self, sniper, mr, contrarian, momentum, always_down) -> Optional[str]:
+    def tick(self, sniper, mr, contrarian, momentum, always_down, last_second) -> Optional[str]:
         secs  = self.secs_left()
         phase = ('live' if secs > 60 else 'closing' if secs > 0
                  else 'resolving' if not self.outcome else 'done')
@@ -94,7 +94,7 @@ class MarketTracker:
         # Find snapshot window: ±14s around each checkpoint, counting DOWN
         target = next(
             (s for s in self.SNAPS
-             if s not in self.recorded and (s - 14) <= secs <= (s + 14)),
+             if s not in self.recorded and (s - 20) <= secs <= (s + 20)),
             None
         )
 
@@ -102,18 +102,18 @@ class MarketTracker:
         if target is None:
             target = next(
                 (s for s in [30, 10]
-                 if s not in self.recorded and 0 <= secs < (s - 14)),
+                 if s not in self.recorded and 0 <= secs < (s - 20)),
                 None
             )
 
         # After close: poll for outcome + catchup 10s snap
-        if secs == 0 and not self.outcome:
+        if secs <= 0 and not self.outcome:
             up_price, outcome, volume = fetch_market(self.slug)
             if up_price is not None:
                 self.last_price = up_price
                 self.last_vol   = volume
                 if 10 not in self.recorded:
-                    self._record(10, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down)
+                    self._record(10, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down, last_second)
             if outcome:
                 self.outcome = outcome
                 _backfill_outcome(self.slug, outcome)
@@ -122,9 +122,12 @@ class MarketTracker:
                 contrarian.on_outcome(self.slug, outcome)
                 momentum.on_outcome(self.slug, outcome)
                 always_down.on_outcome(self.slug, outcome)
+                last_second.on_outcome(self.slug, outcome)
                 self._update_status('done')
                 log.info(f"RESOLVED {self.slug[-10:]} → {outcome}")
                 return f"RESOLVED {self.slug[-10:]} → {outcome}"
+            else:
+                log.debug(f"AWAITING outcome {self.slug[-10:]} secs={secs}")
             self._update_status(phase)
             return None
 
@@ -138,7 +141,7 @@ class MarketTracker:
             self.last_price = up_price
             self.last_vol   = volume
         if up_price is not None or outcome is not None:
-            self._record(target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down)
+            self._record(target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down, last_second)
 
         if outcome and not self.outcome:
             self.outcome = outcome
@@ -148,13 +151,14 @@ class MarketTracker:
             contrarian.on_outcome(self.slug, outcome)
             momentum.on_outcome(self.slug, outcome)
             always_down.on_outcome(self.slug, outcome)
+            last_second.on_outcome(self.slug, outcome)
             self._update_status('done')
             return f"RESOLVED {self.slug[-10:]} → {outcome}"
 
         self._update_status(phase)
         return None
 
-    def _record(self, target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down):
+    def _record(self, target, up_price, volume, outcome, sniper, mr, contrarian, momentum, always_down, last_second):
         _append_row({
             'recorded_at':          datetime.now(timezone.utc).isoformat(),
             'slug':                 self.slug,
@@ -172,9 +176,10 @@ class MarketTracker:
             contrarian.on_snapshot(self.slug, up_price, volume, target)
             momentum.on_snapshot(self.slug, up_price, volume, target)
             always_down.on_snapshot(self.slug, up_price, volume, target)
+            last_second.on_snapshot(self.slug, up_price, volume, target)
 
 
-async def run(sniper, mr, contrarian, momentum, always_down):
+async def run(sniper, mr, contrarian, momentum, always_down, last_second):
     _ensure_csv()
     trackers: Dict[str, MarketTracker] = {}
     interval = COLLECT['poll_interval']
@@ -197,7 +202,7 @@ async def run(sniper, mr, contrarian, momentum, always_down):
                     )
 
             for slug, tr in list(trackers.items()):
-                tr.tick(sniper, mr, contrarian, momentum, always_down)
+                tr.tick(sniper, mr, contrarian, momentum, always_down, last_second)
                 if tr.fully_expired():
                     live_status.pop(slug, None)
                     del trackers[slug]

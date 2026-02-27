@@ -290,3 +290,4 @@ STRATEGIES = {
     "volume_contrarian":    VolumeContrarian,
     "high_vol_momentum":    HighVolumeMomentum,
 }
+

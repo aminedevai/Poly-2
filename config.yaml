@@ -4,43 +4,73 @@
 copy_trader:
   target_wallet:  "0x63ce342161250d705dc0b16df89036c8e5f9ba9a"
   starting_budget: 100.0
-  scale:           0.5          # bet 50% of what target bets
-  poll_interval:   5            # seconds between wallet checks
+  scale:           0.5
+  poll_interval:   5
 
-# Mean Reversion Strategy ($100 paper budget)
+
+# Basket Copy Trader — multi-wallet consensus (Feature B)
+# Add whale wallets here. Only enters when >= consensus_threshold agree.
+# Find wallets via: https://polymarketanalytics.com or Arkham Intelligence
+basket_trader:
+  wallets:
+    - "0x63ce342161250d705dc0b16df89036c8e5f9ba9a"   # same as copy_trader default
+    # - "0xWHALE_WALLET_2_HERE"
+    # - "0xWHALE_WALLET_3_HERE"
+  consensus_threshold: 0.80   # 80% of eligible basket must agree to enter
+  starting_budget:    200.0
+  bet_size:            10.0
+  score_interval:    3600      # re-score wallets every 1 hour
+  min_grade:          "B"      # only follow A or B graded wallets
+
+# Mean Reversion — UPDATED: tighter band 2-15%, was 5% flat
 mean_reversion:
-  budget:         100.0
-  bet_size:       10.0
-  trigger_dist:   0.05          # price must be >5% from 0.50 to fire
+  budget:           100.0
+  bet_size:       5.0
+  trigger_dist_min: 0.02    # fire if deviation >= 2%  (was 5%)
+  trigger_dist_max: 0.15    # skip if deviation >= 15% (already decided)
 
-# Volume Spike Sniper ($100 paper budget)
+# Volume Spike Sniper — UPDATED: only enter when DOWN price 0.40-0.4999
 sniper:
   budget:         100.0
-  bet_size:       10.0
-  vol_ratio:      10.0          # volume spike multiplier threshold
-  min_move:       0.12          # minimum price move to trigger
+  bet_size:       5.0
+  vol_ratio:      10.0
+  min_move:       0.12
+  down_min:       0.40      # DOWN token entry must be >= 0.40
+  down_max:       0.49999   # DOWN token entry must be <= 0.49999
+
+# T-10s Last-Second Momentum — NEW strategy
+last_second:
+  budget:         100.0
+  bet_size:       5.0
+  min_move:       0.10      # |p10 - p30| must be >= 0.10 to fire
 
 # Volume Contrarian ($100 paper budget)
 contrarian:
   budget:       100.0
-  bet_size:     10.0
-  min_volume:   5000.0    # only on high-volume markets
+  bet_size:     5.0
+  min_volume:   1000.0    # $1k floor — same window as Momentum for direct comparison
+  max_volume:   20000.0   # $20k cap  — edge disappears above this
+  up_min:       0.40      # UP token must be >= $0.40
+  up_max:       0.49999   # UP token must be <= $0.4999 (market slightly favours DOWN)
 
-# High Volume Momentum ($100 paper budget)
+# High Volume Momentum / DOWN Bias — UPDATED: $1k-$20k volume window
 momentum:
   budget:       100.0
-  bet_size:     10.0
-  min_volume:   5000.0
+  bet_size:     5.0
+  min_volume:   1000.0      # was 5000 — now catches $1k+ per analysis
+  max_volume:   20000.0     # cap at $20k — above this edge disappears
 
-# Always Bet DOWN baseline ($100 paper budget)
+# Always Bet DOWN — UPDATED: only when DOWN price 0.40-0.4999
 always_down:
   budget:       100.0
-  bet_size:     10.0
+  bet_size:     5.0
   min_volume:   100.0
+  down_min:     0.40        # DOWN token price must be >= 0.40
+  down_max:     0.49999     # DOWN token price must be <= 0.49999
 
 # Data Collector
 collector:
-  poll_interval:  8             # seconds between API calls
+  poll_interval:  4
   snapshots:      [240, 180, 120, 60, 30, 10]
 
 # APIs
@@ -50,12 +80,13 @@ apis:
 
 # Paths
 paths:
-  logs:           "logs"
-  memory:         "logs/trader_memory.json"
-  collector_csv:  "logs/live_market_data.csv"
-  sniper_csv:     "logs/sniper_trades.csv"
-  mr_csv:         "logs/mr_trades.csv"
-  dashboard_json: "dashboard_data.json"
+  logs:                 "logs"
+  memory:               "logs/trader_memory.json"
+  collector_csv:        "logs/live_market_data.csv"
+  sniper_csv:           "logs/sniper_trades.csv"
+  mr_csv:               "logs/mr_trades.csv"
+  last_second_csv:      "logs/last_second_trades.csv"
+  dashboard_json:       "dashboard_data.json"
   log_file:             "logs/bot.log"
   contrarian_csv:       "logs/contrarian_trades.csv"
   momentum_csv:         "logs/momentum_trades.csv"

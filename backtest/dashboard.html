@@ -933,7 +933,7 @@ function showResult(res) {
   // Trade table
   buildTradeTable(res.trades);
 
-  // Charts (render when tab is active)
+  // Charts
   if (document.getElementById('tab-equity').classList.contains('active')) {
     drawCharts(res);
   }

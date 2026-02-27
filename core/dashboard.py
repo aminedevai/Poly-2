@@ -36,14 +36,16 @@ def _strat_json(s, strat_obj, extra_open_fields=None, extra_closed_fields=None):
 
 # ── JSON export ───────────────────────────────────────────────────────────────
 
-def write_json(trader, sniper, mr, contrarian, momentum, always_down,
-               start_time: float, alerts: List[str]):
+def write_json(trader, sniper, mr, contrarian, momentum, always_down, last_second,
+               start_time: float, alerts: List[str],
+               basket=None, watchdog=None, leaderboard=None):
     s   = trader.summary()
     ss  = sniper.summary()
     ms  = mr.summary()
     cs  = contrarian.summary()
     mos = momentum.summary()
     ads = always_down.summary()
+    lss = last_second.summary()
 
     ps          = sorted(trader.positions.values(), key=lambda p: p.entry_amount, reverse=True)
     invested_pct= s["invested"] / s["budget"] * 100 if s["budget"] else 0
@@ -89,10 +91,14 @@ def write_json(trader, sniper, mr, contrarian, momentum, always_down,
         "contrarian":  _strat_json(cs, contrarian),
         "momentum":    _strat_json(mos, momentum),
         "always_down": _strat_json(ads, always_down),
+        "last_second": _strat_json(lss, last_second),
 
         "live_markets":   list(sorted(live_status.values(), key=lambda x: x["end_ts"])),
         "alerts":         alerts[-30:],
         "collector_rows": row_count(),
+        "basket":         basket.summary()              if basket      else {},
+        "watchdog":       watchdog.get_status_list()    if watchdog    else [],
+        "leaderboard":    leaderboard.summary()         if leaderboard else {},
     }
 
     tmp = PATHS["dashboard_json"] + ".tmp"
@@ -145,14 +151,16 @@ def _strat_block(label: str, color, s: dict, win_threshold: float = 0.55) -> Lis
     return L
 
 
-def render(trader, sniper, mr, contrarian, momentum, always_down,
-           start_time: float, alerts: List[str]):
+def render(trader, sniper, mr, contrarian, momentum, always_down, last_second,
+           start_time: float, alerts: List[str],
+           watchdog=None, leaderboard=None):
     s   = trader.summary()
     ss  = sniper.summary()
     ms  = mr.summary()
     cs  = contrarian.summary()
     mos = momentum.summary()
     ads = always_down.summary()
+    lss = last_second.summary()
 
     ps  = sorted(trader.positions.values(), key=lambda p: p.entry_amount, reverse=True)
     cts = trader.closed_trades[-4:]
@@ -235,9 +243,60 @@ def render(trader, sniper, mr, contrarian, momentum, always_down,
     L.append("")
     L += _strat_block("ALWAYS BET DOWN  (baseline control · $100 paper)", C.GY, ads, 0.49)
     L.append("")
+    L += _strat_block("LAST-SECOND MOMENTUM  (T-10s move follow · $100 paper)", C.GR, lss, 0.65)
+    L.append("")
+
+    # Watchdog block
+    if watchdog:
+        L += [f"  {C.OR}\u25bc STRATEGY WATCHDOG{C.R}", f"  {_div(80)}"]
+        for st in watchdog.get_status_list():
+            if st["alert_type"] == "DECAY":
+                icon = red("DECAY")
+            elif st["alert_type"] == "STALE":
+                icon = yel("STALE")
+            else:
+                icon = green("OK   ")
+            rwr = st["rolling_wr"]
+            thr = st["threshold"]
+            wr_c = green(f"{rwr:.0%}") if rwr >= thr else red(f"{rwr:.0%}")
+            L.append(
+                f"  {pad(st['name'].upper(),14)}  [{icon}]  "
+                f"rolling={wr_c}  alltime={gray(f"{st['win_rate']:.0%}")}  "
+                f"thresh={gray(f"{thr:.0%}")}  "
+                f"trades={yel(str(st['n_closed']))}  pnl={pnlc(st['pnl'], f"${st['pnl']:+.2f}")}"
+            )
+        L.append("")
+
+    # BTC Leaderboard block
+    if leaderboard:
+        lb  = leaderboard.summary()
+        age = time.time() - lb.get("last_updated", 0)
+        age_s = f"{age:.0f}s ago" if lb.get("last_updated") else "pending..."
+        L += [
+            f"  {C.CY}\u25bc BTC 5-MIN TOP TRADERS{C.R}  "
+            f"{gray(f'markets={lb.get("markets_seen",0)}  trades={lb.get("trades_seen",0)}  updated={age_s}')}",
+            f"  {_div(110)}"
+        ]
+        for window_key, label in [("leaderboard_1h", "LAST 1H"), ("leaderboard_30m", "LAST 30M")]:
+            board = lb.get(window_key, [])
+            L.append(f"  {yel(label)}")
+            if board:
+                for i, w in enumerate(board[:8], 1):
+                    pnl_s = pnlc(w["net_pnl"], f"${w['net_pnl']:+.2f}")
+                    wr_val = w["win_rate"]
+                    wr_s  = green(f"{wr_val:.0%}") if wr_val >= 0.5 else red(f"{wr_val:.0%}")
+                    L.append(
+                        f"  #{i:<2} {cyan(w['wallet_short'])}  "
+                        f"trades={yel(str(w['trades']))}  "
+                        f"WR={wr_s}  net={pnl_s}  "
+                        f"avg_entry={gray(f"{w['avg_entry']:.3f}")}"
+                    )
+            else:
+                L.append(f"  {gray('Refreshing...')}")
+        L.append("")
 
     # Alerts
-    L += [f"  {C.MG}▼ ALERTS{C.R}", f"  {_div(80)}"]
+    L += [f"  {C.MG}\u25bc ALERTS{C.R}", f"  {_div(80)}"]
     if alerts:
         for a in alerts[-6:]:
             c = (C.GR if "NEW BET" in a else C.OR if "SNIPER" in a
